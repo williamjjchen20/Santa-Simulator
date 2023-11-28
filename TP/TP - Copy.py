@@ -1,5 +1,5 @@
 from cmu_graphics import *
-import random, math, time
+import random, math, copy
 from PIL import Image
 import os, pathlib
 
@@ -48,20 +48,6 @@ class Material:
 
     def __repr__(self):
         return self.type
-
-class Tool:
-    def __init__(self, x, y, hitR, type, width, height):
-        self.x = x
-        self.y = y
-        self.startX = x
-        self.startY = y
-        self.hitR = hitR
-        self.type = type
-        self.width = width
-        self.height = height
-    
-    def __repr__(self):
-        return self.type
 ###
 
 def distance(x0, y0, x1, y1):
@@ -69,7 +55,6 @@ def distance(x0, y0, x1, y1):
 
 def resetApp(app):
     app.screen = 'default-screen'
-    app.timer = 0
     ### Board characteristics 
     app.rows = 15
     app.cols = 15
@@ -106,42 +91,27 @@ def resetApp(app):
     ### Gifts Setup
     app.teddyImage = openImage('teddy.jpg')
     app.teddyImage = CMUImage(app.teddyImage)
-
     app.teddyImageWidth, app.teddyImageHeight = 2*app.cellWidth, 2*app.cellHeight
 
-    app.giftDict = {'teddy':app.teddyImage, 'TV':'gray', 'shoes':'black', 'soldier':'green', 'candycane':'red', 'sewing':'blue'}
+    app.giftDict = {'teddy':app.teddyImage, 'TV':'gray', 'coal':'black', 'soldier':'green', 'candycane':'red'}
 
     ### Tool shop
-    app.materialsList = ['wool', 'candy', 'plastic', 'metal', 'yarn']
+    app.materialsList = ['wool', 'candy', 'plastic', 'metal', 'material5', 'material6']
     app.materialsBar = []
-    app.materialsDict = dict()
+    app.materialsDict = {}
     app.materials = []
     app.selectedMaterial = None
-    app.maxMaterials = 4
-    app.tools = dict()
-    app.selectedTool = None
-
-    app.recipes = {
-        'soldier': {'plastic': 2, 'tool': 'glue'},
-        'teddy': {'wool': 1, 'yarn': 1, 'tool': 'knit'},
-        'TV': {'metal': 2, 'plastic': 1, 'tool': 'hammer'},
-        'shoes': {'yarn': 2, 'plastic': 1, 'tool': 'knit'},
-        'candycane': {'candy': 2, 'tool': 'oven'},
-        'sewing': {'metal': 1, 'plastic': 1, 'yarn': 1, 'tool': 'hammer'}
-    }
-
-
+    app.maxMaterials = 10
+    app.tools = ['hammer', 'glue', 'oven', 'knit', 'paper']
+    app.toolsDict = {}
     setUpMaterials(app)
-    setUpTools(app)
+
 
     ## Game Features
     app.points = 0
     app.trashX, app.trashY = app.boardWidth+app.inventoryWidth/2, app.boardHeight+app.bottomHeight/2
-    app.gameTimer = 0
-    app.paused = True
-    app.gameStart = True
 
-    ### Images, credit: Piazza, https://piazza.com/class/lkq6ivek5cg1bc/post/2147
+    ### Images
     app.santaImage = openImage('santa2.jpg')
     app.santaImage = CMUImage(app.santaImage)
     app.santaImageWidth, app.santaImageHeight = app.cellWidth, app.cellHeight
@@ -151,16 +121,6 @@ def resetApp(app):
     app.tree2Image = openImage('tree2.jpg')
     app.tree2Image = CMUImage(app.tree2Image)
     app.treeImageWidth, app.treeImageHeight = app.cellWidth, app.cellHeight
-
-    app.hammerImage = openImage('hammer.jpg')
-    app.hammerImage = CMUImage(app.hammerImage)
-
-    app.glueImage = openImage('glue.jpg')
-    app.glueImage = CMUImage(app.glueImage)
-
-    app.ovenImage = openImage('oven.jpg')
-    app.ovenImage = CMUImage(app.ovenImage)
-    ###
     
 def resetBoard(app):
     app.board = [[0]*app.cols for i in range(app.rows)]
@@ -181,7 +141,7 @@ def resetBoard(app):
 def onAppStart(app):
     resetApp(app)
 
-def openImage(fileName): ### openImage function, credit: Piazza, https://piazza.com/class/lkq6ivek5cg1bc/post/2147
+def openImage(fileName):
         return Image.open(os.path.join(pathlib.Path(__file__).parent,fileName))
 
 def isLegalBoard(app):
@@ -214,141 +174,99 @@ def checkLegality(app, row, col, moves):
     
 ### Functionality 
 
-def onStep(app):
-    app.stepsPerSecond = 1
-    if not app.paused:
-        app.gameTimer += 1
-    app.timer += 1
-
-    #print(app.materialsDict)
-
 def onMousePress(app, mouseX, mouseY):
     #Checks which gift is selected
-    if not app.paused:
-        for gift in app.inventory:
-            if distance(mouseX, mouseY, gift.x, gift.y)<25:
-                app.selectedGift = gift.number
+    
+    for gift in app.inventory:
+        if distance(mouseX, mouseY, gift.x, gift.y)<25:
+            app.selectedGift = gift.number
 
-        if app.screen == 'gifts-screen':
-            # if distance(mouseX, mouseY, app.width/2, app.height/2) < 50 and len(app.inventoryList) < app.maxGifts:
-            #     randomGift = random.randint(0, len(app.giftList)-1)
-            #     app.inventoryList.append(app.giftList[randomGift])
-            #     setUpInventory(app)
-            if len(app.materials) < app.maxMaterials:
-                for materialIcon in app.materialsBar:
-                    if distance(mouseX, mouseY, materialIcon.x, materialIcon.y)<25:
-                        newMaterial = Material(len(app.materials), mouseX, mouseY, materialIcon.type)
-                        app.materials.append(newMaterial)
+    if app.screen == 'gifts-screen':
+        # if distance(mouseX, mouseY, app.width/2, app.height/2) < 50 and len(app.inventoryList) < app.maxGifts:
+        #     randomGift = random.randint(0, len(app.giftList)-1)
+        #     app.inventoryList.append(app.giftList[randomGift])
+        #     setUpInventory(app)
+        if len(app.materials) < app.maxMaterials:
+            for materialIcon in app.materialsBar:
+                if distance(mouseX, mouseY, materialIcon.x, materialIcon.y)<25:
+                    newMaterial = Material(len(app.materials), mouseX, mouseY, materialIcon.type)
+                    app.materials.append(newMaterial)
+        for material in app.materials:
+            if distance(mouseX, mouseY, material.x, material.y)<25:
+                app.selectedMaterial = material.number
 
-            for material in app.materials:
-                if distance(mouseX, mouseY, material.x, material.y)<25 and app.selectedTool == None:
-                    app.selectedMaterial = material.number
-            
-            for tool in app.tools:
-                x, y = app.tools[tool].x, app.tools[tool].y
-                if distance(mouseX, mouseY, x, y) < app.tools[tool].hitR and app.selectedMaterial == None and tool != 'oven':
-                    app.selectedTool = tool
-            
-            if distance(mouseX, mouseY, app.trashX, app.trashY) < 30:
-                app.materials = []
-            
 def onMouseDrag(app, mouseX, mouseY):
-    if not app.paused:
-        if app.selectedGift != None and app.screen == 'default-screen':
-            gift = app.inventory[app.selectedGift]
-            gift.x, gift.y = mouseX, mouseY
+    if app.selectedGift != None:
+        gift = app.inventory[app.selectedGift]
+        gift.x, gift.y = mouseX, mouseY
 
-        if app.selectedMaterial != None and app.screen == 'gifts-screen':
-            material = app.materials[app.selectedMaterial]
-            material.x, material.y = mouseX, mouseY
-
-        if app.selectedTool != None and app.screen == 'gifts-screen':
-            tool = app.tools[app.selectedTool]
-            tool.x, tool.y = mouseX, mouseY
+    if app.selectedMaterial != None and app.screen == 'gifts-screen':
+        material = app.materials[app.selectedMaterial]
+        material.x, material.y = mouseX, mouseY
     
 def onMouseRelease(app, mouseX, mouseY):
-    if not app.paused:
-        if app.selectedGift != None:
-            gift = app.inventory[app.selectedGift]
-            if (app.boardWidth > mouseX and mouseX > 0) and (app.boardHeight > mouseY and mouseY > 0):
-                dropRow, dropCol = getCell(app, mouseX, mouseY)
-                #print(dropRow, dropCol)
-                for house in app.houses:
-                    if house.row == dropRow and house.col == dropCol and house.gift == gift.type and isNearHouse(app, house):
-                        app.points += 100 ###### add points when the gift goes to the right house
-                        app.inventoryList.pop(gift.number)
-                        app.inventory.pop(gift.number)
-                        app.selectedGift = None
-                        house.gift = None
-                        app.giftsDelivered += 1
-                        if app.giftsDelivered % 3 == 0:
-                            resetBoard(app)               
-                        resetInventory(app)
-                        generateGifts(app)
-            elif distance(mouseX, mouseY, app.trashX, app.trashY) < 30:
-                app.inventory.pop(gift.number)
-                app.inventoryList.pop(gift.number)
-                app.selectedGift = None
-                resetInventory(app)
-            
-            ### Resets gift position if not valid
-            gift.x, gift.y = app.inventoryLeft + app.inventoryWidth/2, 75+75*gift.number
+    if app.selectedGift != None:
+        gift = app.inventory[app.selectedGift]
+        if (app.boardWidth > mouseX and mouseX > 0) and (app.boardHeight > mouseY and mouseY > 0):
+            dropRow, dropCol = getCell(app, mouseX, mouseY)
+            #print(dropRow, dropCol)
+            for house in app.houses:
+                if house.row == dropRow and house.col == dropCol and house.gift == gift.type and isNearHouse(app, house):
+                    app.points += 100 ###### add points when the gift goes to the right house
+                    app.inventoryList.pop(gift.number)
+                    app.inventory.pop(gift.number)
+                    app.selectedGift = None
+                    house.gift = None
+                    app.giftsDelivered += 1
+                    if app.giftsDelivered % 3 == 0:
+                        resetBoard(app)               
+                    resetInventory(app)
+                    generateGifts(app)
+        elif distance(mouseX, mouseY, app.trashX, app.trashY) < 30:
+            app.inventory.pop(gift.number)
+            app.inventoryList.pop(gift.number)
             app.selectedGift = None
+            resetInventory(app)
+        
+        ### Resets gift position if not valid
+        gift.x, gift.y = app.inventoryLeft + app.inventoryWidth/2, 75+75*gift.number
+        app.selectedGift = None
 
-        if app.selectedMaterial != None and app.screen == 'gifts-screen':
-            material = app.materials[app.selectedMaterial]
-            if (mouseX > 0 and mouseX < app.boardWidth-25) and (mouseY > 0 and mouseY < app.boardHeight-25):
-                material.x, material.y = mouseX, mouseY
-                app.materialsDict[material.number] = (material.x, material.y)
-            else:
-                app.materials.pop(material.number)
-                if material.number in app.materialsDict:
-                    del app.materialsDict[material.number] ### del function
-                resetMaterials(app)
-            app.selectedMaterial = None
-            checkMaterials(app)
-
-        if app.selectedTool != None and app.screen == 'gifts-screen':
-            tool = app.tools[app.selectedTool]
-            if (mouseX > 0 and mouseX < app.boardWidth-25) and (mouseY > 0 and mouseY < app.boardHeight-25):
-                tool.x, tool.y = mouseX, mouseY
-            else:
-                tool.x, tool.y = tool.startX, tool.startY
-            app.selectedTool = None
-            checkMaterials(app)
+    if app.selectedMaterial != None and app.screen == 'gifts-screen':
+        material = app.materials[app.selectedMaterial]
+        if (mouseX > 0 and mouseX < app.boardWidth) and (mouseY > 0 and mouseY < app.boardHeight):
+            material.x, material.y = mouseX, mouseY
+        else:
+            app.materials.pop(material.number)
+            resetMaterials(app)
+        app.selectedMaterial = None
 
 def onKeyPress(app, key):
-    if key == 'space':
-        app.paused = not app.paused
-        if app.gameStart:
-            app.gameStart = False
-    
+    dcol, drow = None, None
+    if key == 'right': #and app.santaRow < app.cols-2:
+        app.santaCol += 1
+        dcol, drow = 1, 0
+    elif key == 'left': #and app.santaRow > 0:
+        app.santaCol -=1
+        dcol, drow = -1, 0
+    elif key == 'down': #and app.santaCol < app.rows-2:
+        app.santaRow += 1
+        dcol, drow = 0, 1
+    elif key == 'up': #and app.santaCol > 0:
+        app.santaRow -= 1
+        dcol, drow = 0, -1
+    #print(app.santaRow, app.santaCol)
+    moveCheck(app, dcol, drow)
+
     if key == 'r':
-            resetApp(app)
+        resetApp(app)
 
-    if not app.paused:
-        dcol, drow = None, None
-        if key == 'right': #and app.santaRow < app.cols-2:
-            app.santaCol += 1
-            dcol, drow = 1, 0
-        elif key == 'left': #and app.santaRow > 0:
-            app.santaCol -=1
-            dcol, drow = -1, 0
-        elif key == 'down': #and app.santaCol < app.rows-2:
-            app.santaRow += 1
-            dcol, drow = 0, 1
-        elif key == 'up': #and app.santaCol > 0:
-            app.santaRow -= 1
-            dcol, drow = 0, -1
-        #print(app.santaRow, app.santaCol)
-        moveCheck(app, dcol, drow)
+    if key == 'g':
+        if app.screen == 'default-screen':
+            app.screen = 'gifts-screen'
+        elif app.screen == 'gifts-screen':
+            app.screen = 'default-screen'
 
-        if key == 'g':
-            if app.screen == 'default-screen':
-                app.screen = 'gifts-screen'
-            elif app.screen == 'gifts-screen':
-                app.screen = 'default-screen'
-    
 def moveCheck(app, dcol, drow):
     if app.santaRow > app.rows-1 or app.santaRow < 0:
         app.santaRow -= drow
@@ -379,24 +297,6 @@ def redrawAll(app):
         redrawDefault(app)
     elif app.screen == 'gifts-screen':
         redrawGifts(app)
-
-    if app.gameStart:
-        drawStartScreen(app)
-    elif app.paused and not app.gameStart:
-        drawPaused(app)
-
-def drawPaused(app):
-    drawRect(0, 0, app.width, app.height, fill='black', opacity=90)
-    drawLabel('Game Paused', app.boardWidth/2, app.boardHeight/2, fill='white', size=50, bold=True, align='center')
-    drawLabel("Press 'space' to resume", app.boardWidth/2, app.boardHeight/2+50, fill='white', size=20, align='center')
-    drawLabel("Press 'r' to restart", app.boardWidth/2, app.boardHeight/2+75, fill='white', size=20, align='center')
-
-def drawStartScreen(app):
-    drawRect(0, 0, app.width, app.height, fill='white')
-    titleColor = 'red' if app.timer % 2 == 0 else 'green'
-    labelColor = 'green' if app.timer % 2 == 0 else 'red'
-    drawLabel('Santa Simulator', app.width/2, app.height/2, fill=titleColor, size=50, bold=True, align='center')
-    drawLabel('Press space to start game!', app.width/2, app.height/2+50, fill=labelColor, italic=True, size=25, align='center')
 
 ## Main Page
 def redrawDefault(app):
@@ -521,7 +421,7 @@ def drawInventory(app):
 def drawBottomDefault(app):
     drawLabel(f'Points: {app.points}', app.boardWidth/6, app.boardHeight + app.bottomHeight/2, size=20)
     drawLabel(f"Press 'g' to make gifts!", app.boardWidth/2, app.boardHeight + app.bottomHeight/2, size=16)
-    drawLabel(f'Time: {app.gameTimer} s', 5*app.boardWidth/6, app.boardHeight + app.bottomHeight/2, size=20)
+    drawLabel(f'Time', 5*app.boardWidth/6, app.boardHeight + app.bottomHeight/2, size=20)
 
     drawLine(0, app.boardHeight, app.boardWidth, app.boardHeight)
 
@@ -531,79 +431,35 @@ def setUpMaterials(app):
         x, y = 35+(app.boardWidth/len(app.materialsList))*i, app.boardHeight+app.bottomHeight/2
         app.materialsBar.append(Material(i, x, y, app.materialsList[i]))
 
-def setUpTools(app):
-    #x, y, hitbox R, type, width, height
-    oven = Tool(app.boardWidth-160, app.boardHeight-160, 50, 'oven', 250, 250)
-    app.tools['oven'] = oven
-
-    hammer = Tool(50, 50, 25, 'hammer', 80, 80)
-    app.tools['hammer'] = hammer
-
-    glue = Tool(50, app.boardHeight-100, 25, 'glue', 65, 65)
-    app.tools['glue'] = glue
-
 def resetMaterials(app):
-    ### resets the indeces for both the materials array and the materialsDictionary that keeps track of the locations
-    app.materialsDict = dict()
     for i in range(len(app.materials)):
         material = app.materials[i]
         material.number = i
-        app.materialsDict[material.number] = (material.x, material.y)
 
 def redrawGifts(app):
-    drawTools(app)
     drawInventory(app)
+    drawTools(app)
     drawMaterials(app)
     drawBottomGifts(app)
 
 def drawTools(app):
-    drawToolHitboxes(app)
-    for tool in app.tools:
-        drawImage(f'{app.tools[tool].type}.jpg', app.tools[tool].x, app.tools[tool].y, width=app.tools[tool].width, height=app.tools[tool].height, align='center')
-
-def drawToolHitboxes(app):
-    for tool in app.tools:
-        cx, cy = app.tools[tool].x, app.tools[tool].y
-        drawCircle(cx, cy, app.tools[tool].hitR, fill='red')
+    pass
 
 def drawMaterials(app):
-    for material in app.materials:
-        drawCircle(material.x, material.y, 25, fill='gray')
-        drawLabel(f'{material.type}', material.x, material.y)
-
-def drawBottomGifts(app):
-    drawLine(0, app.boardHeight, app.boardWidth, app.boardHeight)
     for i in range(len(app.materialsBar)):
         material = app.materialsBar[i]
         cx, cy = material.x, material.y
         drawCircle(cx, cy, 25, fill='gray')
         drawLabel(f'{material.type}', cx, cy)
+    for material in app.materials:
+        drawCircle(material.x, material.y, 25, fill='gray')
+        drawLabel(f'{material.type}', material.x, material.y)
 
-def checkMaterials(app): ### This function checks which materials are overlapping and if they form a recipe
-    print('materialsDict ', app.materialsDict)
-    possibleRecipe = dict()
-    closePoints = set()
-    
-    for material1Num in app.materialsDict:
-        x1, y1 = app.materialsDict[material1Num]
-        for material2Num in app.materialsDict:
-            if material2Num != material1Num:
-                x2, y2 = app.materialsDict[material2Num]
-                if distance(x1, y1, x2, y2) < 25+25 and (material1Num not in closePoints and material2Num not in closePoints):
-                    material1 = app.materials[material1Num]
-                    material2 = app.materials[material2Num]
-                    possibleRecipe[material1.type] = possibleRecipe.get(material1.type, 0)+1
-                    possibleRecipe[material2.type] = possibleRecipe.get(material2.type, 0)+1
-                    closePoints.add(material1Num)
-                    closePoints.add(material2Num)
+def drawBottomGifts(app):
+    drawTools(app)
+    drawLine(0, app.boardHeight, app.boardWidth, app.boardHeight)
 
-    print(possibleRecipe)
-    print(closePoints)
-
-def areOverlapping(app):
-    pass
-
-####### Creating the Board ####### credit: CSAcademy, link: https://academy.cs.cmu.edu/notes/5504
+####### Creating the Board ####### credit: CSAcademy
 def getCellSize(app):
     cellWidth = app.boardWidth/app.cols
     cellHeight = app.boardHeight/app.rows
