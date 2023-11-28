@@ -93,8 +93,8 @@ def resetApp(app):
     resetBoard(app)
 
     ### Gifts
-    app.giftList = ['teddy'] #, 'TV', 'coal', 'soldier', 'candycane']
-    app.inventoryList = ['teddy'] #, 'TV', 'coal', 'soldier', 'candycane']
+    app.giftList = ['teddy', 'TV', 'shoes', 'soldier', 'candycane', 'sewing']
+    app.inventoryList = []
     app.inventory = []
     app.numGifts = 2
     app.giftsDelivered = 0
@@ -109,7 +109,7 @@ def resetApp(app):
 
     app.teddyImageWidth, app.teddyImageHeight = 2*app.cellWidth, 2*app.cellHeight
 
-    app.giftDict = {'teddy':app.teddyImage, 'TV':'gray', 'shoes':'black', 'soldier':'green', 'candycane':'red', 'sewing':'blue'}
+    app.giftDict = {'teddy':'brown', 'TV':'gray', 'shoes':'black', 'soldier':'green', 'candycane':'red', 'sewing':'blue'}
 
     ### Tool shop
     app.materialsList = ['wool', 'candy', 'plastic', 'metal', 'yarn']
@@ -117,7 +117,7 @@ def resetApp(app):
     app.materialsDict = dict()
     app.materials = []
     app.selectedMaterial = None
-    app.maxMaterials = 4
+    app.maxMaterials = 3
     app.tools = dict()
     app.selectedTool = None
 
@@ -251,10 +251,11 @@ def onMousePress(app, mouseX, mouseY):
             
             if distance(mouseX, mouseY, app.trashX, app.trashY) < 30:
                 app.materials = []
+                resetTools(app)
             
 def onMouseDrag(app, mouseX, mouseY):
     if not app.paused:
-        if app.selectedGift != None and app.screen == 'default-screen':
+        if app.selectedGift != None:
             gift = app.inventory[app.selectedGift]
             gift.x, gift.y = mouseX, mouseY
 
@@ -300,22 +301,26 @@ def onMouseRelease(app, mouseX, mouseY):
             if (mouseX > 0 and mouseX < app.boardWidth-25) and (mouseY > 0 and mouseY < app.boardHeight-25):
                 material.x, material.y = mouseX, mouseY
                 app.materialsDict[material.number] = (material.x, material.y)
+                ### special case for the oven
+                oven = app.tools['oven']
+                if distance(mouseX, mouseY, oven.x, oven.y) < oven.hitR:
+                    checkMaterials(app, oven)
             else:
                 app.materials.pop(material.number)
-                if material.number in app.materialsDict:
-                    del app.materialsDict[material.number] ### del function
+                # if material.number in app.materialsDict:
+                #     del app.materialsDict[material.number] ### del function
                 resetMaterials(app)
             app.selectedMaterial = None
-            checkMaterials(app)
+            #checkMaterials(app)
 
         if app.selectedTool != None and app.screen == 'gifts-screen':
             tool = app.tools[app.selectedTool]
             if (mouseX > 0 and mouseX < app.boardWidth-25) and (mouseY > 0 and mouseY < app.boardHeight-25):
                 tool.x, tool.y = mouseX, mouseY
+                checkMaterials(app, tool)
             else:
                 tool.x, tool.y = tool.startX, tool.startY
             app.selectedTool = None
-            checkMaterials(app)
 
 def onKeyPress(app, key):
     if key == 'space':
@@ -511,8 +516,8 @@ def drawInventory(app):
     for i in range(len(app.inventoryList)):
         gift = app.inventory[i]
         x, y = gift.x, gift.y
-        #drawCircle(x, y, 25, fill=app.giftDict[gift.type], align='center')
-        drawImage(app.giftDict[gift.type], x, y, width=app.teddyImageWidth, height=app.teddyImageHeight, align='center')
+        drawCircle(x, y, 25, fill=app.giftDict[gift.type], align='center')
+        #drawImage(app.giftDict[gift.type], x, y, width=app.teddyImageWidth, height=app.teddyImageHeight, align='center')
         drawLabel(gift.type, x, y)
     
     drawCircle(app.trashX, app.trashY, 30, align='center', fill='gray')
@@ -532,7 +537,7 @@ def setUpMaterials(app):
         app.materialsBar.append(Material(i, x, y, app.materialsList[i]))
 
 def setUpTools(app):
-    #x, y, hitbox R, type, width, height
+    #x, y, hitbox radius, type, width, height
     oven = Tool(app.boardWidth-160, app.boardHeight-160, 50, 'oven', 250, 250)
     app.tools['oven'] = oven
 
@@ -542,6 +547,9 @@ def setUpTools(app):
     glue = Tool(50, app.boardHeight-100, 25, 'glue', 65, 65)
     app.tools['glue'] = glue
 
+    knit = Tool(app.boardWidth-100, 70, 25, 'knit', 80, 60)
+    app.tools['knit'] = knit
+
 def resetMaterials(app):
     ### resets the indeces for both the materials array and the materialsDictionary that keeps track of the locations
     app.materialsDict = dict()
@@ -549,6 +557,11 @@ def resetMaterials(app):
         material = app.materials[i]
         material.number = i
         app.materialsDict[material.number] = (material.x, material.y)
+
+def resetTools(app):
+    for tool in app.tools:
+        app.tools[tool].x = app.tools[tool].startX
+        app.tools[tool].y = app.tools[tool].startY
 
 def redrawGifts(app):
     drawTools(app)
@@ -564,7 +577,7 @@ def drawTools(app):
 def drawToolHitboxes(app):
     for tool in app.tools:
         cx, cy = app.tools[tool].x, app.tools[tool].y
-        drawCircle(cx, cy, app.tools[tool].hitR, fill='red')
+        drawCircle(cx, cy, app.tools[tool].hitR, fill=None)
 
 def drawMaterials(app):
     for material in app.materials:
@@ -579,29 +592,59 @@ def drawBottomGifts(app):
         drawCircle(cx, cy, 25, fill='gray')
         drawLabel(f'{material.type}', cx, cy)
 
-def checkMaterials(app): ### This function checks which materials are overlapping and if they form a recipe
-    print('materialsDict ', app.materialsDict)
-    possibleRecipe = dict()
-    closePoints = set()
+def checkMaterials(app, tool): ### This function checks which materials are overlapping and if they form a recipe
+    # print('materialsDict ', app.materialsDict)
+    # possibleRecipe = dict()
+    # closePoints = set()
     
-    for material1Num in app.materialsDict:
-        x1, y1 = app.materialsDict[material1Num]
-        for material2Num in app.materialsDict:
-            if material2Num != material1Num:
-                x2, y2 = app.materialsDict[material2Num]
-                if distance(x1, y1, x2, y2) < 25+25 and (material1Num not in closePoints and material2Num not in closePoints):
-                    material1 = app.materials[material1Num]
-                    material2 = app.materials[material2Num]
+    # for material1Num in app.materialsDict:
+    #     x1, y1 = app.materialsDict[material1Num]
+    #     for material2Num in app.materialsDict:
+    #         if material2Num != material1Num:
+    #             x2, y2 = app.materialsDict[material2Num]
+    #             if distance(x1, y1, x2, y2) < 25+25 and (material1Num not in closePoints and material2Num not in closePoints):
+    #                 material1 = app.materials[material1Num]
+    #                 material2 = app.materials[material2Num]
+    #                 possibleRecipe[material1.type] = possibleRecipe.get(material1.type, 0)+1
+    #                 possibleRecipe[material2.type] = possibleRecipe.get(material2.type, 0)+1
+    #                 closePoints.add(material1Num)
+    #                 closePoints.add(material2Num)
+
+    # print(possibleRecipe)
+    # print(closePoints)
+
+    possibleRecipe = dict()
+    overlappingMaterials = []
+    seen = set()
+    ### Find what materials overlap with the tool
+    for material in app.materials:
+        cx, cy = material.x, material.y
+        if distance(tool.x, tool.y, cx, cy,) < tool.hitR:
+            overlappingMaterials.append(material.number)
+            possibleRecipe['tool'] = tool.type
+    ### check if materials are all overlapping
+    for material1Num in overlappingMaterials:
+        for material2Num in overlappingMaterials:
+            if material1Num != material2Num:
+                material1, material2 = app.materials[material1Num], app.materials[material2Num]
+                if distance(material1.x, material1.y, material2.x, material2.y) < 50 and (material1Num not in seen):
+                    seen.add(material1Num)
                     possibleRecipe[material1.type] = possibleRecipe.get(material1.type, 0)+1
-                    possibleRecipe[material2.type] = possibleRecipe.get(material2.type, 0)+1
-                    closePoints.add(material1Num)
-                    closePoints.add(material2Num)
+    print(overlappingMaterials)
+    print(app.materials)
+    # print(seen)
+    for gift in app.recipes:
+        if app.recipes[gift] == possibleRecipe:
+            addGift(app, gift)
+            for materialNum in reversed(overlappingMaterials): ### reversed prevents the indexing from messing up after popping
+                app.materials.pop(materialNum)
+            overlappingMaterials, seen = [], set()
 
-    print(possibleRecipe)
-    print(closePoints)
-
-def areOverlapping(app):
-    pass
+def addGift(app, gift):
+    app.inventoryList.append(gift)
+    setUpInventory(app)
+    resetTools(app)
+    
 
 ####### Creating the Board ####### credit: CSAcademy, link: https://academy.cs.cmu.edu/notes/5504
 def getCellSize(app):
