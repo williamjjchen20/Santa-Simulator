@@ -35,6 +35,7 @@ class Gift:
         self.x = x
         self.y = y
         self.type = type
+        self.hitR = 25
 
     def __repr__(self):
         return self.type
@@ -45,6 +46,7 @@ class Material:
         self.x = x
         self.y = y
         self.type = type
+        self.hitR = 25
 
     def __repr__(self):
         return self.type
@@ -82,7 +84,8 @@ def resetApp(app):
     app.boardHeight = app.height - app.bottomHeight
     app.cellWidth, app.cellHeight = getCellSize(app)
 
-    ### More Board
+    ### Other board stuff
+    app.timerLength = 150
     app.board = [[0]*app.cols for i in range(app.rows)]
 
     ### Santa
@@ -106,7 +109,6 @@ def resetApp(app):
     ### Gifts Setup
     app.teddyImage = openImage('teddy.jpg')
     app.teddyImage = CMUImage(app.teddyImage)
-
     app.teddyImageWidth, app.teddyImageHeight = 2*app.cellWidth, 2*app.cellHeight
 
     app.giftDict = {'teddy':'brown', 'TV':'gray', 'shoes':'black', 'soldier':'green', 'candycane':'red', 'sewing':'blue'}
@@ -120,6 +122,7 @@ def resetApp(app):
     app.maxMaterials = 3
     app.tools = dict()
     app.selectedTool = None
+    app.showRecipeBook = False
 
     app.recipes = {
         'soldier': {'plastic': 2, 'tool': 'glue'},
@@ -137,9 +140,11 @@ def resetApp(app):
     ## Game Features
     app.points = 0
     app.trashX, app.trashY = app.boardWidth+app.inventoryWidth/2, app.boardHeight+app.bottomHeight/2
-    app.gameTimer = 0
+    app.gameTimer = 300
+    app.stepsPerSecond = 1
     app.paused = True
     app.gameStart = True
+    app.gameOver = False
 
     ### Images, credit: Piazza, https://piazza.com/class/lkq6ivek5cg1bc/post/2147
     app.santaImage = openImage('santa2.jpg')
@@ -160,6 +165,14 @@ def resetApp(app):
 
     app.ovenImage = openImage('oven.jpg')
     app.ovenImage = CMUImage(app.ovenImage)
+
+    app.houseImage1 = openImage('house1.jpg')
+    app.houseImage1 = CMUImage(app.houseImage1)
+    app.houseImage2 = openImage('house2.jpg')
+    app.houseImage2 = CMUImage(app.houseImage2)
+    app.houseImage3 = openImage('house3.jpg')
+    app.houseImage3 = CMUImage(app.houseImage3)
+
     ###
     
 def resetBoard(app):
@@ -215,12 +228,12 @@ def checkLegality(app, row, col, moves):
 ### Functionality 
 
 def onStep(app):
-    app.stepsPerSecond = 1
-    if not app.paused:
-        app.gameTimer += 1
     app.timer += 1
-
-    #print(app.materialsDict)
+    if not app.gameOver:
+        if not app.paused:
+            app.gameTimer -= 1
+        if app.gameTimer == 0:
+            app.gameOver = True
 
 def onMousePress(app, mouseX, mouseY):
     #Checks which gift is selected
@@ -298,7 +311,7 @@ def onMouseRelease(app, mouseX, mouseY):
 
         if app.selectedMaterial != None and app.screen == 'gifts-screen':
             material = app.materials[app.selectedMaterial]
-            if (mouseX > 0 and mouseX < app.boardWidth-25) and (mouseY > 0 and mouseY < app.boardHeight-25):
+            if (mouseX > 0 and mouseX < app.boardWidth-material.hitR) and (mouseY > 0 and mouseY < app.boardHeight-material.hitR):
                 material.x, material.y = mouseX, mouseY
                 app.materialsDict[material.number] = (material.x, material.y)
                 ### special case for the oven
@@ -315,7 +328,7 @@ def onMouseRelease(app, mouseX, mouseY):
 
         if app.selectedTool != None and app.screen == 'gifts-screen':
             tool = app.tools[app.selectedTool]
-            if (mouseX > 0 and mouseX < app.boardWidth-25) and (mouseY > 0 and mouseY < app.boardHeight-25):
+            if (mouseX > 0 and mouseX < app.boardWidth-tool.hitR) and (mouseY > 0 and mouseY < app.boardHeight-tool.hitR):
                 tool.x, tool.y = mouseX, mouseY
                 checkMaterials(app, tool)
             else:
@@ -324,35 +337,41 @@ def onMouseRelease(app, mouseX, mouseY):
 
 def onKeyPress(app, key):
     if key == 'space':
+        if app.gameOver:
+            resetApp(app)
+            return ### resets and then doesn't execute the following lines
         app.paused = not app.paused
         if app.gameStart:
             app.gameStart = False
-    
-    if key == 'r':
+
+    if not app.gameOver:   
+        if key == 'r':
             resetApp(app)
+        if not app.paused:
+            dcol, drow = None, None
+            if key == 'right': #and app.santaRow < app.cols-2:
+                app.santaCol += 1
+                dcol, drow = 1, 0
+            elif key == 'left': #and app.santaRow > 0:
+                app.santaCol -=1
+                dcol, drow = -1, 0
+            elif key == 'down': #and app.santaCol < app.rows-2:
+                app.santaRow += 1
+                dcol, drow = 0, 1
+            elif key == 'up': #and app.santaCol > 0:
+                app.santaRow -= 1
+                dcol, drow = 0, -1
+            #print(app.santaRow, app.santaCol)
+            moveCheck(app, dcol, drow)
 
-    if not app.paused:
-        dcol, drow = None, None
-        if key == 'right': #and app.santaRow < app.cols-2:
-            app.santaCol += 1
-            dcol, drow = 1, 0
-        elif key == 'left': #and app.santaRow > 0:
-            app.santaCol -=1
-            dcol, drow = -1, 0
-        elif key == 'down': #and app.santaCol < app.rows-2:
-            app.santaRow += 1
-            dcol, drow = 0, 1
-        elif key == 'up': #and app.santaCol > 0:
-            app.santaRow -= 1
-            dcol, drow = 0, -1
-        #print(app.santaRow, app.santaCol)
-        moveCheck(app, dcol, drow)
+            if key == 'g':
+                if app.screen == 'default-screen':
+                    app.screen = 'gifts-screen'
+                elif app.screen == 'gifts-screen':
+                    app.screen = 'default-screen'
 
-        if key == 'g':
-            if app.screen == 'default-screen':
-                app.screen = 'gifts-screen'
-            elif app.screen == 'gifts-screen':
-                app.screen = 'default-screen'
+            if key == 'h' and app.screen == 'gifts-screen':
+                app.showRecipeBook = not app.showRecipeBook
     
 def moveCheck(app, dcol, drow):
     if app.santaRow > app.rows-1 or app.santaRow < 0:
@@ -390,11 +409,15 @@ def redrawAll(app):
     elif app.paused and not app.gameStart:
         drawPaused(app)
 
+    if app.gameOver:
+        drawGameOver(app)
+
+
 def drawPaused(app):
     drawRect(0, 0, app.width, app.height, fill='black', opacity=90)
-    drawLabel('Game Paused', app.boardWidth/2, app.boardHeight/2, fill='white', size=50, bold=True, align='center')
-    drawLabel("Press 'space' to resume", app.boardWidth/2, app.boardHeight/2+50, fill='white', size=20, align='center')
-    drawLabel("Press 'r' to restart", app.boardWidth/2, app.boardHeight/2+75, fill='white', size=20, align='center')
+    drawLabel('Game Paused', app.width/2, app.height/2, fill='white', size=50, bold=True, align='center')
+    drawLabel("Press 'space' to resume", app.width/2, app.height/2+50, fill='white', size=20, align='center')
+    drawLabel("Press 'r' to restart", app.width/2, app.height/2+75, fill='white', size=20, align='center')
 
 def drawStartScreen(app):
     drawRect(0, 0, app.width, app.height, fill='white')
@@ -403,12 +426,23 @@ def drawStartScreen(app):
     drawLabel('Santa Simulator', app.width/2, app.height/2, fill=titleColor, size=50, bold=True, align='center')
     drawLabel('Press space to start game!', app.width/2, app.height/2+50, fill=labelColor, italic=True, size=25, align='center')
 
+def drawGameOver(app):
+    drawRect(0, 0, app.width, app.height, fill='black', opacity=90)
+    color1 = 'red' if app.timer % 2 == 0 else 'green'
+    color2 = 'green' if app.timer % 2 == 0 else 'red'
+    drawLabel('Times Up!', app.width/2, app.height/2, size=50, fill=color1, bold=True, align='center')
+    drawLabel(f'Gifts Delivered: {app.giftsDelivered}', app.width/2, app.height/2 + 50, fill=color2, size=20, align='center')
+    drawLabel(f'Points: {app.points}', app.width/2, app.height/2 + 75, fill=color1, size=20, align='center')
+
+    drawLabel("Press 'space' to restart", app.width/2, app.height/2 + 150, fill='white', size=20, align='center')
+
 ## Main Page
 def redrawDefault(app):
     drawHouses(app)
     drawObstacles(app)
     drawSanta(app)
     drawInventory(app)
+    drawGiftIcons(app)
     drawBottomDefault(app)
 
 def generateHouses(app):
@@ -463,12 +497,15 @@ def isClogged(app, row, col):
     return False
 
 def drawHouses(app):
+    housePics = [app.houseImage1, app.houseImage2, app.houseImage3]
     for house in app.houses:
         houseX, houseY = house.col*app.cellWidth, house.row*app.cellHeight
-        drawRect(houseX + app.cellWidth/6, houseY+app.cellHeight/2, 2*app.cellWidth/3, app.cellHeight/2, fill='sienna')
-        drawPolygon(houseX, houseY+app.cellHeight/2, houseX+app.cellWidth/4, houseY+app.cellHeight/8, houseX+3*app.cellWidth/4, houseY+app.cellHeight/8, houseX+app.cellWidth, houseY+app.cellHeight/2, fill='red')
-        #drawRect(houseX, houseY, app.cellWidth, app.cellHeight, fill='red')
-        drawLabel(f'{house.gift}', houseX+app.cellWidth/2, houseY+app.cellHeight/2)
+        drawImage(housePics[house.number], houseX+app.cellWidth/2, houseY+app.cellHeight/2 + 2, width=1.3*app.cellWidth, height=1.3*app.cellHeight, align='center')
+        # drawRect(houseX + app.cellWidth/6, houseY+app.cellHeight/2, 2*app.cellWidth/3, app.cellHeight/2, fill='sienna')
+        # drawPolygon(houseX, houseY+app.cellHeight/2, houseX+app.cellWidth/4, houseY+app.cellHeight/8, houseX+3*app.cellWidth/4, houseY+app.cellHeight/8, houseX+app.cellWidth, houseY+app.cellHeight/2, fill='red')
+        # drawPolygon(houseX+app.cellWidth/6, houseY+app.cellHeight/2, houseX+app.cellWidth/4, houseY+app.cellHeight/6, houseX+3*app.cellWidth/4, houseY+app.cellHeight/8, houseX+app.cellWidth, houseY+app.cellHeight/2, fill='red')
+
+        #drawCircle(houseX + app.cellWidth/2, houseY + app.cellHeight/2, app.cellWidth/2, fill=None, border='black')
 
 def drawObstacles(app):
     ### try to improve efficiency
@@ -516,24 +553,37 @@ def drawInventory(app):
     for i in range(len(app.inventoryList)):
         gift = app.inventory[i]
         x, y = gift.x, gift.y
-        drawCircle(x, y, 25, fill=app.giftDict[gift.type], align='center')
+        drawCircle(x, y, gift.hitR, fill=app.giftDict[gift.type], align='center')
         #drawImage(app.giftDict[gift.type], x, y, width=app.teddyImageWidth, height=app.teddyImageHeight, align='center')
         drawLabel(gift.type, x, y)
     
     drawCircle(app.trashX, app.trashY, 30, align='center', fill='gray')
     drawLabel('Trash Can', app.boardWidth+app.inventoryWidth/2, app.boardHeight+app.bottomHeight/2)
+
+def drawGiftIcons(app):
+     if app.screen == 'default-screen':
+        for house in app.houses:
+            if house.gift != None:
+                labelX, labelY = (house.col+1)*app.cellWidth+app.cellWidth/2, (house.row-1)*app.cellHeight+app.cellHeight/3
+                drawLabel(f'{house.gift}', labelX, labelY)
+                drawCircle(labelX, labelY, 25, border='black', fill=None)
+                drawCircle(labelX-app.cellWidth/8, labelY + 9*app.cellHeight/10, 10, border='black', fill='white')
+                drawCircle(labelX-app.cellWidth/3, labelY + 1.25*app.cellHeight, 5, border='black', fill='white')
     
 def drawBottomDefault(app):
     drawLabel(f'Points: {app.points}', app.boardWidth/6, app.boardHeight + app.bottomHeight/2, size=20)
     drawLabel(f"Press 'g' to make gifts!", app.boardWidth/2, app.boardHeight + app.bottomHeight/2, size=16)
-    drawLabel(f'Time: {app.gameTimer} s', 5*app.boardWidth/6, app.boardHeight + app.bottomHeight/2, size=20)
+    drawTimer(app)
 
     drawLine(0, app.boardHeight, app.boardWidth, app.boardHeight)
+
+def drawTimer(app):
+    drawLabel(f'Time: {app.gameTimer} s', 5*app.boardWidth/6, app.boardHeight + app.bottomHeight/2, size=20)
 
 ## Gift page
 def setUpMaterials(app):
     for i in range(len(app.materialsList)):
-        x, y = 35+(app.boardWidth/len(app.materialsList))*i, app.boardHeight+app.bottomHeight/2
+        x, y = 35+((app.boardWidth-app.timerLength)/len(app.materialsList))*i, app.boardHeight+app.bottomHeight/2
         app.materialsBar.append(Material(i, x, y, app.materialsList[i]))
 
 def setUpTools(app):
@@ -568,6 +618,13 @@ def redrawGifts(app):
     drawInventory(app)
     drawMaterials(app)
     drawBottomGifts(app)
+    drawHints(app)
+    if app.showRecipeBook:
+        drawRecipeBook(app)
+
+def drawHints(app):
+    drawLabel('Place the right materials, and then use a tool to build a gift!', app.boardWidth/2, 20, size=12, align='center')
+    drawLabel("Press 'h' to show/hide recipes", app.boardWidth/2, 40, size=12, align='center')
 
 def drawTools(app):
     drawToolHitboxes(app)
@@ -581,37 +638,37 @@ def drawToolHitboxes(app):
 
 def drawMaterials(app):
     for material in app.materials:
-        drawCircle(material.x, material.y, 25, fill='gray')
+        drawCircle(material.x, material.y, material.hitR, fill='gray')
         drawLabel(f'{material.type}', material.x, material.y)
 
 def drawBottomGifts(app):
     drawLine(0, app.boardHeight, app.boardWidth, app.boardHeight)
+    drawTimer(app)
     for i in range(len(app.materialsBar)):
         material = app.materialsBar[i]
         cx, cy = material.x, material.y
-        drawCircle(cx, cy, 25, fill='gray')
+        drawCircle(cx, cy, material.hitR, fill='gray')
         drawLabel(f'{material.type}', cx, cy)
 
-def checkMaterials(app, tool): ### This function checks which materials are overlapping and if they form a recipe
-    # print('materialsDict ', app.materialsDict)
-    # possibleRecipe = dict()
-    # closePoints = set()
+def drawRecipeBook(app):
+    drawRect(0, 0, app.width, app.height, fill='black', opacity=90)
+    drawRect(app.width/2, app.height/2, 3*app.width/4, 3*app.height/4, fill='white', align='center')
+    drawLabel('Recipes', app.width/2, app.height/8+15, size=20, align='center')
     
-    # for material1Num in app.materialsDict:
-    #     x1, y1 = app.materialsDict[material1Num]
-    #     for material2Num in app.materialsDict:
-    #         if material2Num != material1Num:
-    #             x2, y2 = app.materialsDict[material2Num]
-    #             if distance(x1, y1, x2, y2) < 25+25 and (material1Num not in closePoints and material2Num not in closePoints):
-    #                 material1 = app.materials[material1Num]
-    #                 material2 = app.materials[material2Num]
-    #                 possibleRecipe[material1.type] = possibleRecipe.get(material1.type, 0)+1
-    #                 possibleRecipe[material2.type] = possibleRecipe.get(material2.type, 0)+1
-    #                 closePoints.add(material1Num)
-    #                 closePoints.add(material2Num)
+    i = 1
+    for recipe in app.recipes:
+        drawLabel(f'{recipe}:', app.width/8+100, app.height/8+10+50*i, size=15, bold=True, align='right')
+        j = 1
+        for material in app.recipes[recipe]:
+            if material != 'tool':
+                drawLabel(f'{app.recipes[recipe][material]} x {material}', app.width/8+60+100*j, app.height/8+10+50*i, size=15, align='left')
+            else:
+                drawLabel(f'Use the {app.recipes[recipe][material]}', app.width/2+3*app.width/8-10, app.height/8+10+50*i, size=15, align='right')
+            j+=1
+        i+=1 
 
-    # print(possibleRecipe)
-    # print(closePoints)
+
+def checkMaterials(app, tool): ### This function checks which materials are overlapping and if they form a recipe
 
     possibleRecipe = dict()
     overlappingMaterials = []
@@ -622,17 +679,16 @@ def checkMaterials(app, tool): ### This function checks which materials are over
         if distance(tool.x, tool.y, cx, cy,) < tool.hitR:
             overlappingMaterials.append(material.number)
             possibleRecipe['tool'] = tool.type
+
     ### check if materials are all overlapping
     for material1Num in overlappingMaterials:
         for material2Num in overlappingMaterials:
             if material1Num != material2Num:
                 material1, material2 = app.materials[material1Num], app.materials[material2Num]
-                if distance(material1.x, material1.y, material2.x, material2.y) < 50 and (material1Num not in seen):
+                if distance(material1.x, material1.y, material2.x, material2.y) < material1.hitR + material2.hitR and (material1Num not in seen):
                     seen.add(material1Num)
                     possibleRecipe[material1.type] = possibleRecipe.get(material1.type, 0)+1
-    print(overlappingMaterials)
-    print(app.materials)
-    # print(seen)
+
     for gift in app.recipes:
         if app.recipes[gift] == possibleRecipe:
             addGift(app, gift)
@@ -645,7 +701,6 @@ def addGift(app, gift):
     setUpInventory(app)
     resetTools(app)
     
-
 ####### Creating the Board ####### credit: CSAcademy, link: https://academy.cs.cmu.edu/notes/5504
 def getCellSize(app):
     cellWidth = app.boardWidth/app.cols
