@@ -37,7 +37,8 @@ def resetApp(app, level, totalGifts, resetGame):
     app.santaCol = 0
 
     ### Setup Board
-    resetBoard(app, app.level, 40+10*app.level)
+    numObstacles = 40+10*app.level
+    resetBoard(app, app.level, numObstacles)
 
     if resetGame:
         ### Gifts
@@ -87,10 +88,11 @@ def resetApp(app, level, totalGifts, resetGame):
 
     ### Images
     app.santaImageWidth, app.santaImageHeight = app.cellWidth, app.cellHeight
-    print(app.santaImageWidth, app.santaImageHeight)
     app.houseImageWidth, app.houseImageHeight = 1.3*app.cellWidth, 1.2*app.cellHeight
     app.materialImageWidth, app.materialImageHeight = 50, 50
     app.giftImageWidth, app.giftImageHeight = 60, 60
+
+    print(app.rows, app.cols, app.numObstacles)
 
 def chooseBoardDimensions(app, level):
     app.rows = 11 + level
@@ -108,12 +110,22 @@ def resetBoard(app, numHouses, numObstacles):
     app.obstacleTypes = ['tree1', 'tree2']
     app.numObstacles = numObstacles
     generateObstacles(app)
+
     if not isLegalBoard(app):
-        resetApp(app, app.level, app.totalGifts, False)
+        app.resetCounter += 1
+        print(app.resetCounter)
+        if app.resetCounter > 5:
+            app.resetCounter = 0
+            resetBoard(app, numHouses, numObstacles - 5) 
+        else:
+            resetBoard(app, app.numHouses, numObstacles)
+        
 
 def onAppStart(app):
-    resetApp(app, 3, 0, True)
+    app.resetCounter = 0
+    resetApp(app, 5, 0, True)
 
+### Maze generation
 def isLegalBoard(app):
     for house in app.houses:
         moves = []
@@ -256,14 +268,15 @@ def onKeyPress(app, key):
     if key == 'space':
         if app.gameOver:
             resetApp(app, 1, 0, True)
-            return ### resets and then doesn't execute the following lines
-        app.paused = not app.paused
-        if app.gameStart:
+            return
+        elif app.gameStart:
             app.gameStart = False
+        app.paused = not app.paused
+
+    if  key =='r' and not app.gameStart: ### Restart game 
+        resetApp(app, 1, 0, True)
 
     if not app.gameOver:   
-        if key == 'r':
-            resetApp(app, 1, 0, True)
         if not app.paused:
             dcol, drow = None, None
             if key == 'right': #and app.santaRow < app.cols-2:
@@ -316,16 +329,15 @@ def isNearHouse(app, house):
 
 ### Graphics
 def redrawAll(app):
-
-    if app.screen == 'default-screen' and not app.gameStart:
-        redrawDefault(app)
-    elif app.screen == 'gifts-screen' and not app.gameStart:
-        redrawGifts(app)
-
     if app.gameStart:
         drawStartScreen(app)
-    elif app.paused and not app.gameStart:
-        drawPaused(app)
+    else:
+        if app.screen == 'default-screen':
+            redrawDefault(app)
+        elif app.screen == 'gifts-screen':
+            redrawGifts(app)
+        if app.paused:
+            drawPaused(app)
 
     if app.gameOver:
         if app.level > app.totalLevels:
@@ -365,7 +377,7 @@ def drawGameComplete(app):
     drawLabel(f'Gifts Delivered: {app.totalGifts}', app.width/2, app.height/2 + 50, fill=color2, size=20, align='center')
     drawLabel(f'Time Elapsed: {300-app.gameTimer} seconds', app.width/2, app.height/2 + 75, fill=color1, size=20, align='center')
 
-    drawLabel("Press 'space' to play again", app.width/2, app.height/2 + 150, fill='white', size=20, align='center')
+    drawLabel("Press 'space' to play again", app.width/2, app.height/2 + 150, fill='black', size=20, align='center')
 
 ## Main Page
 def redrawDefault(app):
@@ -385,6 +397,7 @@ def generateHouse(app, i):
     housePos = app.board[houseRow][houseCol]
     if housePos == 0 and not isClogged(app, houseRow, houseCol):
         app.board[houseRow][houseCol] = 'house'
+        
     else:
         generateHouse(app, i)
         return
@@ -591,6 +604,7 @@ def drawRecipeBook(app):
             j+=1
         i+=1 
 
+### Gift Making
 def checkMaterials(app, tool): ### This function checks which materials are overlapping and if they form a recipe
     possibleRecipe = dict()
     overlappingMaterials = []
