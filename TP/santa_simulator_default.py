@@ -9,12 +9,16 @@ def distance(x0, y0, x1, y1):
     return ((x0-x1)**2 + (y0-y1)**2)**0.5
 
 def resetApp(app, level, totalGifts, resetGame):
-
+    app.totalResets = 0
     app.screen = 'default-screen'
     app.level = level
+
     app.totalGifts = totalGifts
+    app.stepsPerSecond = 10
+
+    app.nextLevel = False
     app.totalLevels = 5
-    
+
     app.paused = resetGame
     app.gameStart = resetGame
     app.gameOver = True if app.level > app.totalLevels else False
@@ -36,6 +40,12 @@ def resetApp(app, level, totalGifts, resetGame):
     app.santaRow = 0
     app.santaCol = 0
 
+    ## House Finding
+    app.path = None
+    app.showPath = False
+    app.pathTime = None
+    app.selectedHouse = None
+
     ### Setup Board
     numObstacles = 40+10*app.level
     resetBoard(app, app.level, numObstacles)
@@ -44,7 +54,7 @@ def resetApp(app, level, totalGifts, resetGame):
         ### Gifts
         app.giftList = ['teddy', 'TV', 'shoes', 'soldier', 'candycane', 'sewing']
         app.giftImageDict = {'teddy':app.teddyImage, 'TV':app.TVImage, 'shoes':app.shoesImage, 'soldier':app.soldierImage, 'candycane':app.candycaneImage, 'sewing':app.sewingImage}
-        app.inventoryList = []
+        app.inventoryList = ['teddy', 'TV', 'shoes', 'soldier', 'candycane', 'sewing']
         app.inventory = []
         app.numGifts = 1
         app.giftsDelivered = 0
@@ -84,7 +94,8 @@ def resetApp(app, level, totalGifts, resetGame):
         app.trashX, app.trashY = app.boardWidth+app.inventoryWidth/2, app.boardHeight+app.bottomHeight/2
         app.gameTimer = 300
         app.timer = 0
-        app.stepsPerSecond = 1
+
+        ### Extra features
 
     ### Images
     app.santaImageWidth, app.santaImageHeight = app.cellWidth, app.cellHeight
@@ -92,13 +103,17 @@ def resetApp(app, level, totalGifts, resetGame):
     app.materialImageWidth, app.materialImageHeight = 50, 50
     app.giftImageWidth, app.giftImageHeight = 60, 60
 
-    print(app.rows, app.cols, app.numObstacles)
+    ### Animation
+    resetDeliveryAnimation(app)
 
 def chooseBoardDimensions(app, level):
     app.rows = 11 + level
     app.cols = 11 + level
     
 def resetBoard(app, numHouses, numObstacles):
+    if numObstacles > (app.rows)*(app.cols):
+        numObstacles = (app.rows)*(app.cols)//3
+
     app.board = [[0]*app.cols for i in range(app.rows)]
     ### Houses
     app.houses = []
@@ -113,31 +128,34 @@ def resetBoard(app, numHouses, numObstacles):
 
     if not isLegalBoard(app):
         app.resetCounter += 1
-        print(app.resetCounter)
+        app.totalResets += 1
+
+       # print(app.totalResets)
+
+        if app.totalResets > 40:
+            resetBoard(app, numHouses, 1)
+            return
         if app.resetCounter > 5:
             app.resetCounter = 0
             resetBoard(app, numHouses, numObstacles - 5) 
         else:
             resetBoard(app, app.numHouses, numObstacles)
         
-
 def onAppStart(app):
-    app.resetCounter = 0
-    resetApp(app, 5, 0, True)
+    app.resetCounter, app.totalResets = 0, 0
+    resetApp(app, 2, 0, True)
 
 ### Maze generation
 def isLegalBoard(app):
     for house in app.houses:
         moves = []
-        #print(house.row, house.col, app.houses)
         possible = checkLegality(app, house.row, house.col, moves)
-        # print(app.houses)
-        # print(moves)
         if not possible:
             return False
     return True
 
-def checkLegality(app, row, col, moves):
+
+def checkLegality(app, row, col, moves): ## I need this function for maze generation because using find path will crash my compter
     if (row, col) == (app.santaRow, app.santaCol):
         moves.append((row, col))
         return True
@@ -157,12 +175,25 @@ def checkLegality(app, row, col, moves):
 ### Functionality 
 
 def onStep(app):
-    app.timer += 1
+    app.timer += (1/app.stepsPerSecond)
     if not app.gameOver:
         if not app.paused:
-            app.gameTimer -= 1
-        if app.gameTimer == 0:
+            app.gameTimer -= (1/app.stepsPerSecond)
+        if app.gameTimer <= 0:
             app.gameOver = True
+    
+    if app.pathTime != None:
+        if app.timer - app.pathTime > 1:
+            app.showPath = False
+            app.selectedHouse = None
+
+    if app.giftAnimation:
+        app.giftAnimationY += 2
+        if app.giftAnimationY >= app.giftAnimationYf:
+            resetDeliveryAnimation(app)
+            if app.nextLevel:
+                nextLevel(app)
+
 
 def onMousePress(app, mouseX, mouseY):
     #Checks which gift is selected
@@ -170,6 +201,18 @@ def onMousePress(app, mouseX, mouseY):
         for gift in app.inventory:
             if distance(mouseX, mouseY, gift.x, gift.y)<25:
                 app.selectedGift = gift.number
+                
+        if app.screen == 'default-screen':
+            for house in app.houses:
+                if 0 < mouseX < app.boardWidth and 0 < mouseY < app.boardHeight:
+                    mouseRow, mouseCol = getCell(app, mouseX, mouseY)
+                    if distance(mouseRow, mouseCol, house.row, house.col) == 0:
+                        moves = []
+                        path = findPath(app, house.row, house.col, moves)
+                        path = list(reversed(path))
+                        app.path, app.showPath, app.pathTime = path, True, app.timer
+                        app.selectedHouse = house
+                        #print(path)
 
         if app.screen == 'gifts-screen':
             if len(app.materials) < app.maxMaterials:
@@ -221,10 +264,9 @@ def onMouseRelease(app, mouseX, mouseY):
                         house.gift = None
                         app.giftsDelivered += 1
                         app.totalGifts += 1
+                        deliveryAnimation(app, gift, house)
                         if app.giftsDelivered == app.numHouses:
-                            resetApp(app, app.level+1, app.totalGifts, False)
-                            app.giftsDelivered = 0 
-                            generateGifts(app, 0)
+                            app.nextLevel = True
                         else:
                             generateGifts(app, house.number+1)              
                         resetInventory(app)
@@ -273,7 +315,7 @@ def onKeyPress(app, key):
             app.gameStart = False
         app.paused = not app.paused
 
-    if  key =='r' and not app.gameStart: ### Restart game 
+    if key == 'r' and not app.gameStart: ### Restart game 
         resetApp(app, 1, 0, True)
 
     if not app.gameOver:   
@@ -302,6 +344,9 @@ def onKeyPress(app, key):
 
             if key == 'h' and app.screen == 'gifts-screen':
                 app.showRecipeBook = not app.showRecipeBook
+
+            app.showPath = False
+            
     
 def moveCheck(app, dcol, drow):
     if app.santaRow > app.rows-1 or app.santaRow < 0:
@@ -311,6 +356,7 @@ def moveCheck(app, dcol, drow):
     elif app.board[app.santaRow][app.santaCol] == 'house' or app.board[app.santaRow][app.santaCol] in app.obstacleTypes:
         app.santaRow -= drow
         app.santaCol -= dcol
+
 
 def isLegalMove(app, row, col):
     if row > app.rows-1 or row < 0:
@@ -326,6 +372,11 @@ def isNearHouse(app, house):
         if house.col + dcol == app.santaCol and house.row + drow == app.santaRow:
             return True
     return False
+
+def nextLevel(app):
+    resetApp(app, app.level+1, app.totalGifts, False)
+    app.giftsDelivered = 0 
+    generateGifts(app, 0)
 
 ### Graphics
 def redrawAll(app):
@@ -359,6 +410,16 @@ def drawStartScreen(app):
     drawLabel('Santa Simulator', app.width/2, app.height/2, fill=titleColor, size=50, bold=True, align='center')
     drawLabel('Press space to start game!', app.width/2, app.height/2+50, fill=labelColor, italic=True, size=25, align='center')
 
+    drawLights(app)
+
+def drawLights(app):
+    colors = ['green', 'red', 'pink', 'yellow', 'orange']
+    lightSpacing = app.width/10
+    for cx in range(10):
+        drawOval(cx*lightSpacing+lightSpacing/2, 0, lightSpacing, 50, fill=None, border='black')
+        randColor = random.randint(0, len(colors)-1)
+        drawCircle(cx*lightSpacing+lightSpacing/2, 25, 10, fill=colors[randColor], border=None)
+
 def drawGameOver(app):
     drawRect(0, 0, app.width, app.height, fill='black', opacity=90)
     color1 = 'red' if app.timer % 2 == 0 else 'green'
@@ -387,6 +448,7 @@ def redrawDefault(app):
     drawInventory(app)
     drawGiftRequests(app)
     drawExtraDefault(app)
+    drawAnimations(app)
 
 def generateHouses(app):
     for i in range(app.numHouses):
@@ -396,8 +458,7 @@ def generateHouse(app, i):
     houseRow, houseCol = random.randint(1, app.rows-2), random.randint(1, app.cols-2)
     housePos = app.board[houseRow][houseCol]
     if housePos == 0 and not isClogged(app, houseRow, houseCol):
-        app.board[houseRow][houseCol] = 'house'
-        
+        app.board[houseRow][houseCol] = 'house'   
     else:
         generateHouse(app, i)
         return
@@ -414,7 +475,7 @@ def generateObstacle(app, i):
     obsRow, obsCol = random.randint(0, app.rows-1), random.randint(0, app.cols-1)
     obsPos = app.board[obsRow][obsCol]
     randObs = random.randint(0, len(app.obstacleTypes)-1)
-    if obsPos == 0 and (obsRow, obsCol) != (app.santaRow, app.santaCol): #and not isClogged(app, obsRow, obsCol):
+    if obsPos == 0 and (obsRow, obsCol) != (app.santaRow, app.santaCol):
         app.board[obsRow][obsCol] = app.obstacleTypes[randObs]
     else:
         generateObstacle(app, i)
@@ -423,7 +484,7 @@ def generateObstacle(app, i):
     
 def isClogged(app, row, col):
     for house in app.houses:
-        dist =((row-house.row)**2 + (col-house.col)**2)**0.5
+        dist = ((row-house.row)**2 + (col-house.col)**2)**0.5
         if dist <= 5:
             return True 
     return False
@@ -437,6 +498,10 @@ def drawHouses(app):
 def drawObstacles(app):
     for obstacle in app.obstacles:
         obsX, obsY = obstacle.col*app.cellWidth, obstacle.row*app.cellHeight
+
+        ###animate the trees
+        obsX, obsY = animateTrees(app, obstacle, obsX, obsY)
+        
         if obstacle.type == 'tree1':
             drawRect(obsX+4*app.cellWidth/10, obsY+4*app.cellHeight/5, app.cellWidth/5, app.cellHeight/5, fill='sienna')
             drawPolygon(obsX, obsY+4*app.cellHeight/5, obsX+app.cellWidth/2, obsY, obsX+app.cellWidth, obsY+4*app.cellHeight/5, fill='darkGreen', border='white', borderWidth=2.5)
@@ -447,12 +512,12 @@ def drawObstacles(app):
             drawPolygon(obsX+app.cellWidth/8, obsY+4*app.cellHeight/5, obsX+app.cellWidth/2, obsY, obsX+7*app.cellWidth/8, obsY+4*app.cellHeight/5, fill='darkOliveGreen', border='white')
             drawPolygon(obsX+app.cellWidth/6, obsY+app.cellHeight/2, obsX+app.cellWidth/2, obsY, obsX+5*app.cellWidth/6, obsY+app.cellHeight/2, fill='oliveDrab', border='white')
             drawPolygon(obsX+app.cellWidth/4, obsY+app.cellHeight/4, obsX+app.cellWidth/2, obsY, obsX+3*app.cellWidth/4, obsY+app.cellHeight/4, fill='olive', border='white')
-        else:
-            drawRect(obsX, obsY, app.cellWidth, app.cellHeight, fill='green')
+        # else:
+        #     drawRect(obsX, obsY, app.cellWidth, app.cellHeight, fill='green')
 
 def drawSanta(app):
     cx, cy = app.santaCol*app.cellWidth, app.santaRow*app.cellHeight
-    if app.timer % 2 == 0:
+    if (math.floor(app.timer)) % 2 == 0:
         drawImage(app.santaImage1, cx, cy, width=app.santaImageWidth, height=app.santaImageHeight, rotateAngle=-15)
     else:
         drawImage(app.santaImage1, cx, cy, width=app.santaImageWidth, height=app.santaImageHeight, rotateAngle=15)
@@ -473,6 +538,7 @@ def resetInventory(app):
         gift.x, gift.y = app.inventoryLeft + app.inventoryWidth/2, 75+75*i
 
 def drawInventory(app):
+    drawRect(app.boardWidth, 0, app.inventoryWidth, app.height, fill='blanchedalmond')
     drawLine(app.boardWidth, 0, app.boardWidth, app.height)
     drawLabel('Gifts', app.boardWidth+app.inventoryWidth/2, 20, align='center', size=20)
 
@@ -482,8 +548,9 @@ def drawInventory(app):
         drawImage(app.giftImageDict[gift.type], x, y, width=app.giftImageWidth, height=app.giftImageHeight, align='center')
         #drawLabel(gift.type, x, y)
     
-    drawCircle(app.trashX, app.trashY, 30, align='center', fill='gray')
-    drawLabel('Trash Can', app.boardWidth+app.inventoryWidth/2, app.boardHeight+app.bottomHeight/2)
+    drawImage(app.trashImage, app.trashX, app.trashY, width=60, height=60, align='center')
+    #drawCircle(app.trashX, app.trashY, 30, align='center', fill='gray')
+    #drawLabel('Trash Can', app.boardWidth+app.inventoryWidth/2, app.boardHeight+app.bottomHeight/2)
 
 def drawGiftRequests(app):
      if app.screen == 'default-screen':
@@ -503,18 +570,22 @@ def drawExtraDefault(app):
 
     drawLine(0, app.boardHeight, app.boardWidth, app.boardHeight)
 
+    ### draw path
+    if app.path != None:
+        showPath(app, app.showPath)
+
 def drawTimer(app):
-    drawLabel(f'Time: {app.gameTimer} s', 5*app.boardWidth/6, app.boardHeight + app.bottomHeight/2, size=20)
+    drawLabel(f'Time: {math.floor(app.gameTimer)} s', 5*app.boardWidth/6, app.boardHeight + app.bottomHeight/2, size=20)
 
 ## Gift page
 def setUpMaterials(app):
     for i in range(len(app.materialsList)):
-        x, y = 35+((app.boardWidth-150)/len(app.materialsList))*i, app.boardHeight+app.bottomHeight/2
+        x, y = 35+((app.boardWidth-150)/len(app.materialsList))*i, app.boardHeight
         app.materialsBar.append(Material(i, x, y, app.materialsList[i]))
 
 def setUpTools(app):
     #x, y, hitbox radius, type, width, height
-    oven = Tool(app.boardWidth-160, app.boardHeight-160, 50, 'oven', 250, 250)
+    oven = Tool(app.boardWidth-175, app.boardHeight-250, 60, 'oven', 300, 300)
     app.tools['oven'] = oven
 
     hammer = Tool(50, 50, 30, 'hammer', 80, 80)
@@ -540,6 +611,7 @@ def resetTools(app):
         app.tools[tool].y = app.tools[tool].startY
 
 def redrawGifts(app):
+    drawBackDrop(app)
     drawTools(app)
     drawInventory(app)
     drawMaterials(app)
@@ -547,6 +619,12 @@ def redrawGifts(app):
     drawHints(app)
     if app.showRecipeBook:
         drawRecipeBook(app)
+
+def drawBackDrop(app):
+    drawRect(0, 0, app.boardWidth, app.boardHeight-100, fill='bisque')
+    drawRect(0, app.boardHeight-150, app.boardWidth, app.boardHeight, fill='tan')
+    drawImage(app.shelfImage, app.boardWidth/2, app.boardHeight/2, width=100, height=100, align='center')
+    drawImage(app.tableImage, app.boardWidth/2, app.boardHeight-100, width=1.3*app.boardWidth, height=200, align='center')
 
 def drawHints(app):
     drawLabel('Place the right materials, and then use a tool to build a gift!', app.boardWidth/2, 20, size=12, align='center')
@@ -570,11 +648,9 @@ def drawMaterials(app):
         #drawLabel(f'{material.type}', material.x, material.y)
 
 def drawExtraGifts(app):
-    drawLine(0, app.boardHeight, app.boardWidth, app.boardHeight)
     drawTimer(app)
     for i in range(len(app.materialsBar)):
         material = app.materialsBar[i]
-        cx, cy = material.x, material.y
         drawImage(app.materialImageDict[material.type], material.x, material.y, width=app.materialImageWidth, height=app.materialImageHeight, align='center')
         #drawCircle(cx, cy, material.hitR, fill='gray')
         #drawLabel(f'{material.type}', cx, cy)
@@ -633,6 +709,7 @@ def checkMaterials(app, tool): ### This function checks which materials are over
             addGift(app, gift)
             for materialNum in reversed(overlappingMaterials): ### reversed prevents the indexing from messing up after popping
                 app.materials.pop(materialNum)
+                resetMaterials(app)
             overlappingMaterials, seen = [], set()
 
 
@@ -641,6 +718,121 @@ def addGift(app, gift):
         app.inventoryList.append(gift)
         setUpInventory(app)
         resetTools(app)
+
+
+### Extra Features
+    
+def showPath(app, showPath):
+    pathColor = 'black' if showPath else None
+    for row, col in app.path:
+        #if closestDistance == None or dist < closestDistance:
+        drawCircle(col*app.cellWidth+app.cellWidth/2, row*app.cellHeight+app.cellHeight/2, 10, fill=pathColor, opacity=10)
+
+# def findPath(app, row, col, moves):
+#     bestDirection = None
+#     if row >= app.santaRow and col > app.santaCol:
+#         bestDirection = [(1, 0), (0, 1), (-1, 0), (0, -1)]
+#     elif row > app.santaRow and col <= app.santaCol:
+#         bestDirection = [(1, 0), (0, -1), (-1, 0), (0, 1)]
+#     elif row < app.santaRow and col > app.santaCol:
+#         bestDirection = [(-1, 0), (0, 1), (1, 0), (0, -1)]
+#     elif row < app.santaRow and col < app.santaCol:
+#         bestDirection = [(-1, 0), (0, -1), (1, 0), (0, 1)]
+#     return findOptimalPath(app, row, col, moves, bestDirection)
+    
+def findPath(app, row, col, moves):
+    if (row, col) == (app.santaRow, app.santaCol):
+        moves.append((row, col))
+        return moves
+    else:
+        moves.append((row, col))
+        #bestDirection = chooseDirection(app, row, col)
+        for (drow, dcol) in [(-1, 0), (0, -1), (1, 0), (0, 1)]:
+            if isLegalMove(app, row+drow, col+dcol) and (row+drow, col+dcol) not in moves:
+                row += drow
+                col += dcol
+                solution = findPath(app, row, col, moves)
+                if solution != None:
+                    return solution
+                moves.pop()
+                row -= drow
+                col -= dcol
+        return None
+
+def chooseDirection(app, row, col):
+    bestDirection = None
+    diffCol, diffRow = col-app.santaCol, row-app.santaRow
+    if diffRow > 0 and diffCol > 0:
+        if diffRow >= diffCol:
+            bestDirection = [(-1, 0), (0, -1), (1, 0), (0, 1)]
+        else:
+            bestDirection = [(0, -1), (-1, 0), (0, 1), (1, 0)]
+    elif diffRow > 0 and diffCol < 0:
+        if abs(diffRow) >= abs(diffCol):
+            bestDirection = [(-1, 0), (0, 1), (1, 0), (0, -1)]
+        else:
+            bestDirection = [(0, 1), (-1, 0), (0, -1), (1, 0)]
+    elif diffRow < 0 and diffCol > 0:
+        if abs(diffRow) >= abs(diffCol):
+            bestDirection = [(1, 0), (0, -1), (-1, 0), (0, 1)]
+        else:
+            bestDirection = [(0, -1), (1, 0), (0, 1), (-1, 0)]
+    elif diffRow < 0 and diffCol < 0:
+        if abs(diffRow) >= abs(diffCol):
+            bestDirection = [(1, 0), (0, 1), (-1, 0), (0, -1)]
+        else:
+            bestDirection = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+    elif diffRow == 0 and diffCol > 0:
+        bestDirection = [(0, -1), (1, 0), (0, 1), (-1, 0)]
+    elif diffRow == 0 and diffCol < 0:
+        bestDirection = [(0, 1), (1, 0), (0, 1), (-1, 0)]
+    elif diffRow < 0 and diffCol == 0:
+        bestDirection = [(1, 0), (0, 1), (-1, 0), (0, -1)]
+    elif diffRow > 0 and diffCol == 0:
+        bestDirection = [(-1, 0), (0, 1), (1, 0), (0, -1)]
+    return bestDirection
+
+#Avalanche 
+
+### Animations
+def drawAnimations(app):
+    if app.giftAnimation:
+        drawImage(app.giftImage, app.giftAnimationX, app.giftAnimationY-5, width=1.2*app.giftImageWidth, height=app.giftImageHeight, align='center')
+        #drawCircle(app.giftAnimationX, app.giftAnimationY, app.giftImageWidth/3, fill='white')
+        drawImage(app.giftAnimationType, app.giftAnimationX, app.giftAnimationY, width=app.giftImageWidth/2, height=app.giftImageHeight/2, align='center')
+
+def animateTrees(app, obstacle, obsX, obsY):
+    if obstacle.number % 2 == 0:
+        if (math.floor(app.timer)) % 2 == 0:
+            obsY -= 1
+        else:
+            obsY += 1
+    elif obstacle.number % 2 == 1:
+        if (math.floor(app.timer)) % 2 == 0:
+            obsY += 1
+        else:
+            obsY -= 1
+
+    return obsX, obsY
+
+
+### Gift Delivery
+def resetDeliveryAnimation(app):
+    app.giftAnimation = False
+    app.giftFallTime = None
+    app.giftAnimationType = None
+    app.giftAnimationX, app.giftAnimationY = None, None
+
+def deliveryAnimation(app, gift, house):
+    app.giftAnimation = True
+    app.giftAnimationType = app.giftImageDict[gift.type]
+    app.giftAnimationX, app.giftAnimationY = house.col*app.cellWidth+app.cellWidth/2, house.row*app.cellHeight-app.cellHeight
+    app.giftAnimationYf = house.row*app.cellHeight + app.cellHeight/2
+
+
+### Sparkles
+def playSparkles(app):
+    pass
 
 def main():
     runApp(800, 700)

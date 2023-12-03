@@ -27,7 +27,6 @@ app.candycaneImage = CMUImage(app.candycaneImage)
 app.sewingImage = openImage('sewing.png') #https://creazilla.com/nodes/820062-sewing-machine-clipart
 app.sewingImage = CMUImage(app.sewingImage)
 
-
 ### Santa
 app.santaImage1 = openImage('santa1.png') # https://www.istockphoto.com/vector/cartoon-santa-claus-gm493442274-76885439
 app.santaImage1 = CMUImage(app.santaImage1)
@@ -58,7 +57,7 @@ app.hammerImage = CMUImage(app.hammerImage)
 app.glueImage = openImage('glue.png') # https://depositphotos.com/vector/cartoon-glue-bottle-59808127.html
 app.glueImage = CMUImage(app.glueImage)
 
-app.ovenImage = openImage('oven.jpg') # https://www.istockphoto.com/vector/burning-brick-fireplace-with-fire-classic-indoor-chimney-in-traditional-style-with-gm1343026291-422046383
+app.ovenImage = openImage('oven.png') # https://www.istockphoto.com/vector/burning-brick-fireplace-with-fire-classic-indoor-chimney-in-traditional-style-with-gm1343026291-422046383
 app.ovenImage = CMUImage(app.ovenImage)
 
 app.knitImage = openImage('knit.png') # https://www.seekpng.com/ipng/u2q8a9r5t4i1y3a9_knitting-needle-png-knitting-needles-transparent/
@@ -74,3 +73,22 @@ app.houseImage2 = CMUImage(app.houseImage2)
 
 app.houseImage3 = openImage('house3.jpg')
 app.houseImage3 = CMUImage(app.houseImage3)
+
+### Giftshop
+
+app.shelfImage = openImage('shelf.png') #https://thehungryjpeg.com/product/3498125-empty-wall-book-shelf-wood-shelves-vector-illustration
+app.shelfImage = CMUImage(app.shelfImage)
+
+app.tableImage = openImage('table.png') #
+app.tableImage = CMUImage(app.tableImage)
+
+### Trash can
+
+app.trashImage = openImage('trash.png') #https://www.pinterest.com/pin/787355947343009144/
+app.trashImage = CMUImage(app.trashImage)
+
+
+#### Other
+
+app.giftImage = openImage('gift.png') # https://www.cleanpng.com/png-blue-computer-icons-gift-clip-art-4116009/
+app.giftImage = CMUImage(app.giftImage)
