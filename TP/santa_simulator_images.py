@@ -99,6 +99,16 @@ app.tableImage = CMUImage(app.tableImage)
 app.workbenchImage = openImage('workbench.png') # https://www.istockphoto.com/vector/wooden-table-on-white-background-gm657723786-119947237
 app.workbenchImage = CMUImage(app.workbenchImage)
 
+fireImage = openImage('fire.gif') # https://gifer.com/en/gifs/fire
+app.fireImages = []
+for frame in range(fireImage.n_frames): #Code from piazza gif guide
+        fireImage.seek(frame)
+        fr = fireImage.resize((fireImage.size[0]//2, fireImage.size[1]//2))
+        fr = CMUImage(fr)
+        app.fireImages.append(fr)
+app.fireImages.pop(0)
+
+
 ### Trash can
 
 app.trashImage = openImage('trash.png') #https://www.pinterest.com/pin/787355947343009144/

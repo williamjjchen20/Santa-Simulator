@@ -63,3 +63,11 @@ class Tool:
     
     def __repr__(self):
         return self.type
+
+### Extra
+
+class Snow:
+    def __init__(self, x, y, radius):
+        self.x = x
+        self.y = y
+        self.radius = radius

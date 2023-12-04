@@ -42,7 +42,7 @@ def resetApp(app, level, totalGifts, resetGame):
     app.santaCol = 0
     app.santaX = app.cellWidth/2
     app.santaY = app.cellHeight/2
-    app.santaMove = 0
+    app.santaFrame = 0
     app.santaFlip = False
 
     ## House Finding
@@ -59,7 +59,7 @@ def resetApp(app, level, totalGifts, resetGame):
         ### Gifts
         app.giftList = ['teddy', 'TV', 'shoes', 'soldier', 'candycane', 'sewing']
         app.giftImageDict = {'teddy':app.teddyImage, 'TV':app.TVImage, 'shoes':app.shoesImage, 'soldier':app.soldierImage, 'candycane':app.candycaneImage, 'sewing':app.sewingImage}
-        app.inventoryList = ['teddy', 'TV', 'shoes', 'soldier', 'candycane', 'sewing']
+        app.inventoryList = []
         app.inventory = []
         app.numGifts = 1
         app.giftsDelivered = 0
@@ -81,6 +81,15 @@ def resetApp(app, level, totalGifts, resetGame):
         app.selectedTool = None
         app.showRecipeBook = False
         app.recipeWidth, app.recipeHeight = 3*app.width/4, 3*app.height/4
+        app.workbenchY = app.boardHeight/2+275
+        app.workbenchHeight = 450
+
+        app.fireFrame = 0
+
+        app.toolAnimation = None
+        app.toolTime = None
+        app.angleChange = -5
+        app.makingGift = False
 
         app.recipes = {
             'soldier': {'plastic': 2, 'tool': 'glue'},
@@ -97,10 +106,12 @@ def resetApp(app, level, totalGifts, resetGame):
         ## Game Features
         app.points = 0
         app.trashX, app.trashY = app.boardWidth+app.inventoryWidth/2, app.boardHeight+app.bottomHeight/2
-        app.gameTimer = 300
+        app.gameTimer = 600
         app.timer = 0
 
         ### Extra features
+        app.snow = []
+        initSnow(app)
 
     ### Images
     app.santaImageWidth, app.santaImageHeight = 1.5*app.cellWidth, 1.5*app.cellHeight
@@ -198,6 +209,24 @@ def onStep(app):
             resetDeliveryAnimation(app)
             if app.nextLevel:
                 nextLevel(app)
+    
+    for snow in app.snow:
+        dx = random.randint(-1, 1)
+        dy = random.randint(1, 5)
+        snow.x += dx
+        snow.y += dy
+        if (snow.x > app.boardWidth or snow.x < 0) or snow.y > app.boardHeight:
+            snow.x = random.randint(0, app.boardWidth)
+            snow.y = 0
+            snow.radius = random.randint(1, 5)
+
+    if app.toolAnimation != None:
+        checkMaterials(app, app.tools[app.toolAnimation])
+        toolAnimation(app, app.toolAnimation)
+    
+    if app.screen == 'gifts-screen':
+        app.fireFrame += 1
+
 
 
 def onMousePress(app, mouseX, mouseY):
@@ -222,17 +251,17 @@ def onMousePress(app, mouseX, mouseY):
         if app.screen == 'gifts-screen':
             if len(app.materials) < app.maxMaterials:
                 for materialIcon in app.materialsBar:
-                    if distance(mouseX, mouseY, materialIcon.x, materialIcon.y)<25:
+                    if distance(mouseX, mouseY, materialIcon.x, materialIcon.y)<materialIcon.hitR and not app.makingGift:
                         newMaterial = Material(len(app.materials), mouseX, mouseY, materialIcon.type)
                         app.materials.append(newMaterial)
 
             for material in app.materials:
-                if distance(mouseX, mouseY, material.x, material.y)<25 and app.selectedTool == None:
+                if distance(mouseX, mouseY, material.x, material.y)<material.hitR and app.selectedTool == None and not app.makingGift:
                     app.selectedMaterial = material.number
             
             for tool in app.tools:
                 x, y = app.tools[tool].x, app.tools[tool].y
-                if distance(mouseX, mouseY, x, y) < app.tools[tool].hitR and app.selectedMaterial == None and tool != 'oven':
+                if distance(mouseX, mouseY, x, y) < app.tools[tool].hitR and app.selectedMaterial == None and tool != 'oven' and tool != app.toolAnimation:
                     app.selectedTool = tool
             
             if distance(mouseX, mouseY, app.trashX, app.trashY) < 30:
@@ -286,18 +315,18 @@ def onMouseRelease(app, mouseX, mouseY):
             app.selectedGift = None
 
         if app.selectedMaterial != None and app.screen == 'gifts-screen':
+            oven = app.tools['oven']
             material = app.materials[app.selectedMaterial]
-            if (mouseX > 0 and mouseX < app.boardWidth-material.hitR) and (mouseY > 0 and mouseY < app.boardHeight-material.hitR):
+            if (mouseX > 0 and mouseX < app.boardWidth-material.hitR) and (mouseY > app.workbenchY-app.workbenchHeight/2 and mouseY < app.workbenchY-100):
                 material.x, material.y = mouseX, mouseY
                 app.materialsDict[material.number] = (material.x, material.y)
                 ### special case for the oven
-                oven = app.tools['oven']
-                if distance(mouseX, mouseY, oven.x, oven.y) < oven.hitR:
-                    checkMaterials(app, oven)
+            elif distance(mouseX, mouseY, oven.x, oven.y) < oven.hitR:
+                checkMaterials(app, oven)
+                # app.toolAnimation = 'oven'
+                # app.toolTime = app.timer
             else:
                 app.materials.pop(material.number)
-                # if material.number in app.materialsDict:
-                #     del app.materialsDict[material.number] ### del function
                 resetMaterials(app)
             app.selectedMaterial = None
             #checkMaterials(app)
@@ -307,6 +336,8 @@ def onMouseRelease(app, mouseX, mouseY):
             if (mouseX > 0 and mouseX < app.boardWidth-tool.hitR) and (mouseY > 0 and mouseY < app.boardHeight-tool.hitR):
                 tool.x, tool.y = mouseX, mouseY
                 checkMaterials(app, tool)
+                # app.toolAnimation = tool.type
+                # app.toolTime = app.timer
             else:
                 tool.x, tool.y = tool.startX, tool.startY
             app.selectedTool = None
@@ -356,19 +387,19 @@ def onKeyHold(app, keys):
     if not app.gameOver:   
         if not app.paused:
             dx, dy = None, None
-            change = app.cellWidth/4
+            changeX, changeY = app.cellWidth/4, app.cellHeight/4
             if 'right' in keys: #and app.santaRow < app.cols-2:
-                app.santaX += change
-                dx, dy = change, 0
+                app.santaX += changeX
+                dx, dy = changeX, 0
             elif 'left' in keys: #and app.santaRow > 0:
-                app.santaX -= change
-                dx, dy = -change, 0
+                app.santaX -= changeX
+                dx, dy = -changeX, 0
             elif 'down' in keys: #and app.santaCol < app.rows-2:
-                app.santaY += change
-                dx, dy = 0, change
+                app.santaY += changeY
+                dx, dy = 0, changeY
             elif 'up' in keys: #and app.santaCol > 0:
-                app.santaY -= change
-                dx, dy = 0, -change
+                app.santaY -= changeY
+                dx, dy = 0, -changeY
             #print(app.santaRow, app.santaCol)
             if dx != None and dy != None:
                 if dx < 0:
@@ -377,7 +408,7 @@ def onKeyHold(app, keys):
                     app.santaFlip = False
             moveCheck(app, dx, dy)
             app.santaRow, app.santaCol = getCell(app, app.santaX, app.santaY)
-            app.santaMove += 1
+            app.santaFrame += 1
             
     
 def moveCheck(app, dx, dy):
@@ -473,7 +504,7 @@ def drawGameComplete(app):
     color2 = 'green' if app.timer % 2 == 0 else 'red'
     drawLabel('Great Work, Santa!', app.width/2, app.height/2, size=50, fill=color1, bold=True, align='center')
     drawLabel(f'Gifts Delivered: {app.totalGifts}', app.width/2, app.height/2 + 50, fill=color2, size=20, align='center')
-    drawLabel(f'Time Elapsed: {math.floor(300-app.gameTimer)} seconds', app.width/2, app.height/2 + 75, fill=color1, size=20, align='center')
+    drawLabel(f'Time Elapsed: {math.floor(600-app.gameTimer)} seconds', app.width/2, app.height/2 + 75, fill=color1, size=20, align='center')
 
     drawLabel("Press 'space' to play again", app.width/2, app.height/2 + 150, fill='black', size=20, align='center')
 
@@ -583,10 +614,10 @@ def drawObstacles(app):
 def drawSanta(app):
     cx, cy = app.santaX, app.santaY
 
-    santaImage = app.santaImages[app.santaMove%len(app.santaImages)]
+    santaImage = app.santaImages[app.santaFrame%len(app.santaImages)]
 
     if app.santaFlip:
-        santaImage = app.santaImagesFlipped[app.santaMove%len(app.santaImages)]
+        santaImage = app.santaImagesFlipped[app.santaFrame%len(app.santaImages)]
     
     santaImage = CMUImage(santaImage)
 
@@ -661,13 +692,13 @@ def setUpTools(app):
     oven = Tool(app.boardWidth-175, app.boardHeight/2-100, 60, 'oven', 300, 300, 0)
     app.tools['oven'] = oven
 
-    hammer = Tool(50, 70, 30, 'hammer', 80, 80, -15)
+    hammer = Tool(50, 60, 30, 'hammer', 80, 80, -15)
     app.tools['hammer'] = hammer
 
-    glue = Tool(50, 215, 30, 'glue', 65, 65, 15)
+    glue = Tool(50, 205, 30, 'glue', 65, 65, 15)
     app.tools['glue'] = glue
 
-    knit = Tool(125, 150, 30, 'knit', 80, 60, 30)
+    knit = Tool(125, 140, 30, 'knit', 80, 60, 30)
     app.tools['knit'] = knit
 
 def resetMaterials(app):
@@ -692,12 +723,13 @@ def redrawGifts(app):
     drawHints(app)
     if app.showRecipeBook:
         drawRecipeBook(app)
+    drawAnimations(app)
 
 def drawBackDrop(app):
     drawRect(0, 0, app.boardWidth, app.boardHeight-100, fill='bisque')
     drawRect(0, app.boardHeight/2, app.boardWidth, app.boardHeight, fill='tan')
     drawImage(app.shelfImage, app.boardWidth/2-200, app.boardHeight/2-125, width=200, height=300, align='center')
-    drawImage(app.workbenchImage, app.boardWidth/2, app.boardHeight/2+275, width=1.2*app.boardWidth, height=450, align='center')
+    drawImage(app.workbenchImage, app.boardWidth/2, app.workbenchY, width=1.2*app.boardWidth, height=app.workbenchHeight, align='center')
     drawImage(app.tableImage, app.boardWidth/2-25, app.boardHeight+25, width=1.2*app.boardWidth, height=app.boardHeight, align='center')
 
 def drawHints(app):
@@ -706,9 +738,25 @@ def drawHints(app):
 
 def drawTools(app):
     drawToolHitboxes(app)
-    for tool in app.tools:
-        image = app.toolImageDict[tool]
-        drawImage(image, app.tools[tool].x, app.tools[tool].y, width=app.tools[tool].width, height=app.tools[tool].height, rotateAngle=app.tools[tool].angle, align='center')
+    for toolType in app.tools:
+        tool = app.tools[toolType]
+        image = app.toolImageDict[toolType]
+        cx, cy, rx, ry = tool.x, tool.y+tool.hitR, 3*tool.hitR, tool.hitR/2
+        if toolType == 'oven':
+            cy = tool.y+2*tool.hitR
+            rx = 3.5*tool.hitR
+            drawOval(cx, cy, rx, ry, fill='black', opacity=40)
+            fireImage = app.fireImages[app.fireFrame%len(app.fireImages)]
+            drawRect(tool.x, tool.y+60, 100, 100, align='center', fill=rgb(95, 40, 15), opacity=80)
+            drawImage(image, tool.x, tool.y, width=tool.width, height=tool.height, rotateAngle=tool.angle, align='center')
+            drawImage(fireImage, tool.x, tool.y+50, width=150, height=150, align='center')
+        else:
+            drawOval(cx, cy, rx, ry, fill='black', opacity=40)
+            drawImage(image, tool.x, tool.y, width=tool.width, height=tool.height, rotateAngle=tool.angle, align='center')
+
+def drawTool(app, tool):
+    image = app.toolImageDict[tool.type]
+    drawImage(image, tool.x, tool.y, width=tool.width, height=tool.height, rotateAngle=tool.angle, align='center')
 
 def drawToolHitboxes(app):
     for tool in app.tools:
@@ -717,6 +765,7 @@ def drawToolHitboxes(app):
 
 def drawMaterials(app):
     for material in app.materials:
+        drawOval(material.x, material.y+3*material.hitR/4, 2*material.hitR, material.hitR, fill='black', opacity=30)
         drawImage(app.materialImageDict[material.type], material.x, material.y, width=app.materialImageWidth, height=app.materialImageHeight, align='center')
         #drawCircle(material.x, material.y, material.hitR, fill='gray')
         #drawLabel(f'{material.type}', material.x, material.y)
@@ -756,8 +805,10 @@ def drawRecipeBook(app):
 
 ### Gift Making
 def checkMaterials(app, tool): ### This function checks which materials are overlapping and if they form a recipe
+
     possibleRecipe = dict()
     overlappingMaterials = []
+    
     seen = set()
     ### Find what materials overlap with the tool
     for material in app.materials:
@@ -765,9 +816,6 @@ def checkMaterials(app, tool): ### This function checks which materials are over
         if distance(tool.x, tool.y, cx, cy,) < tool.hitR:
             overlappingMaterials.append(material.number)
             possibleRecipe['tool'] = tool.type
-    
-    if len(overlappingMaterials) > 0:
-        tool.x, tool.y = tool.startX, tool.startY
 
     ### check if materials are all overlapping
     for material1Num in overlappingMaterials:
@@ -780,18 +828,25 @@ def checkMaterials(app, tool): ### This function checks which materials are over
 
     for gift in app.recipes:
         if app.recipes[gift] == possibleRecipe:
-            addGift(app, gift)
-            for materialNum in reversed(overlappingMaterials): ### reversed prevents the indexing from messing up after popping
-                app.materials.pop(materialNum)
-                resetMaterials(app)
-            overlappingMaterials, seen = [], set()
+            if app.toolAnimation == None:
+                app.toolAnimation = tool.type
+                app.toolTime = app.timer
+                app.makingGift = True
 
+            if math.floor(app.timer - app.toolTime) >= 3:
+                addGift(app, gift)
+                for materialNum in reversed(overlappingMaterials): ### reversed prevents the indexing from messing up after popping
+                    app.materials.pop(materialNum)
+                    resetMaterials(app)
 
+                overlappingMaterials, seen = [], set()
+    if not app.makingGift:
+        resetTools(app)
+    
 def addGift(app, gift):
     if len(app.inventoryList) < app.maxGifts:
         app.inventoryList.append(gift)
         setUpInventory(app)
-        resetTools(app)
 
 
 ### Extra Features
@@ -870,10 +925,13 @@ def chooseDirection(app, row, col):
 
 ### Animations
 def drawAnimations(app):
-    if app.giftAnimation:
-        drawImage(app.giftImage, app.giftAnimationX, app.giftAnimationY-5, width=1.2*app.giftImageWidth, height=app.giftImageHeight, align='center')
-        #drawCircle(app.giftAnimationX, app.giftAnimationY, app.giftImageWidth/3, fill='white')
-        drawImage(app.giftAnimationType, app.giftAnimationX, app.giftAnimationY, width=app.giftImageWidth/2, height=app.giftImageHeight/2, align='center')
+    if app.screen == 'default-screen' and app.giftAnimation:
+        drawGiftFalling(app)
+    if app.screen == 'default-screen':
+        for snow in app.snow:
+            drawSnow(snow)
+    if app.screen == 'gifts-screen' and app.toolAnimation != None and app.toolAnimation != 'oven':
+        drawTool(app, app.tools[app.toolAnimation])
 
 def animateTrees(app, obstacle, obsX, obsY):
     if obstacle.number % 2 == 0:
@@ -889,6 +947,17 @@ def animateTrees(app, obstacle, obsX, obsY):
 
     return obsX, obsY
 
+### Snow
+def initSnow(app):
+    for i in range(40):
+        x = random.randint(0, app.boardWidth)
+        y = 0
+        radius = random.randint(0, 5)
+        snow = Snow(x, y, radius)
+        app.snow.append(snow)
+
+def drawSnow(snow):
+    drawCircle(snow.x, snow.y, snow.radius, fill='white', border='lightblue')
 
 ### Gift Delivery
 def resetDeliveryAnimation(app):
@@ -903,6 +972,41 @@ def deliveryAnimation(app, gift, house):
     app.giftAnimationX, app.giftAnimationY = house.col*app.cellWidth+app.cellWidth/2, house.row*app.cellHeight-app.cellHeight
     app.giftAnimationYf = house.row*app.cellHeight + app.cellHeight/2
 
+def drawGiftFalling(app):
+    drawImage(app.giftImage, app.giftAnimationX, app.giftAnimationY-5, width=1.2*app.giftImageWidth, height=app.giftImageHeight, align='center')
+    #drawCircle(app.giftAnimationX, app.giftAnimationY, app.giftImageWidth/3, fill='white')
+    drawImage(app.giftAnimationType, app.giftAnimationX, app.giftAnimationY, width=app.giftImageWidth/2, height=app.giftImageHeight/2, align='center')
+
+### Tool Animations
+def toolAnimation(app, tool):
+    time = app.timer - app.toolTime
+    tool = app.tools[app.toolAnimation]
+    if math.floor(time) < 3:
+        if tool.type == 'hammer':
+            tool.angle += app.angleChange
+            if abs(tool.angle) == 30:
+                app.angleChange *= -1
+        elif tool.type == 'knit':
+            if time < 1.5:
+                tool.angle -= 2
+            else:
+                tool.angle += 2
+        elif tool.type == 'glue':
+            if tool.angle < 180:
+                tool.angle += 180
+            if time < 1:
+                tool.y += 1
+                tool.angle -= 1
+            elif time > 1 and time < 2:
+                tool.y -= 1 
+                tool.angle += 1
+            elif time > 2:
+                tool.angle -= 180
+
+    else:
+        app.toolAnimation = None
+        app.makingGift = False
+        resetTools(app)
 
 ### Sparkles
 def playSparkles(app):
