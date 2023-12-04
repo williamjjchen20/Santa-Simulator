@@ -3,6 +3,7 @@ from santa_simulator_images import *
 from santa_simulator_classes import *
 
 from cmu_graphics import *
+from PIL import Image
 import random
 
 def distance(x0, y0, x1, y1):
@@ -39,6 +40,10 @@ def resetApp(app, level, totalGifts, resetGame):
     ### Santa
     app.santaRow = 0
     app.santaCol = 0
+    app.santaX = app.cellWidth/2
+    app.santaY = app.cellHeight/2
+    app.santaMove = 0
+    app.santaFlip = False
 
     ## House Finding
     app.path = None
@@ -98,7 +103,7 @@ def resetApp(app, level, totalGifts, resetGame):
         ### Extra features
 
     ### Images
-    app.santaImageWidth, app.santaImageHeight = app.cellWidth, app.cellHeight
+    app.santaImageWidth, app.santaImageHeight = 1.5*app.cellWidth, 1.5*app.cellHeight
     app.houseImageWidth, app.houseImageHeight = 1.3*app.cellWidth, 1.2*app.cellHeight
     app.materialImageWidth, app.materialImageHeight = 50, 50
     app.giftImageWidth, app.giftImageHeight = 60, 60
@@ -320,21 +325,21 @@ def onKeyPress(app, key):
 
     if not app.gameOver:   
         if not app.paused:
-            dcol, drow = None, None
-            if key == 'right': #and app.santaRow < app.cols-2:
-                app.santaCol += 1
-                dcol, drow = 1, 0
-            elif key == 'left': #and app.santaRow > 0:
-                app.santaCol -=1
-                dcol, drow = -1, 0
-            elif key == 'down': #and app.santaCol < app.rows-2:
-                app.santaRow += 1
-                dcol, drow = 0, 1
-            elif key == 'up': #and app.santaCol > 0:
-                app.santaRow -= 1
-                dcol, drow = 0, -1
-            #print(app.santaRow, app.santaCol)
-            moveCheck(app, dcol, drow)
+            # dcol, drow = None, None
+            # if key == 'right': #and app.santaRow < app.cols-2:
+            #     app.santaCol += 1
+            #     dcol, drow = 1, 0
+            # elif key == 'left': #and app.santaRow > 0:
+            #     app.santaCol -=1
+            #     dcol, drow = -1, 0
+            # elif key == 'down': #and app.santaCol < app.rows-2:
+            #     app.santaRow += 1
+            #     dcol, drow = 0, 1
+            # elif key == 'up': #and app.santaCol > 0:
+            #     app.santaRow -= 1
+            #     dcol, drow = 0, -1
+            # #print(app.santaRow, app.santaCol)
+            # moveCheck(app, dcol, drow)
 
             if key == 'g':
                 if app.screen == 'default-screen':
@@ -347,16 +352,48 @@ def onKeyPress(app, key):
 
             app.showPath = False
             
+def onKeyHold(app, keys):
+    if not app.gameOver:   
+        if not app.paused:
+            dx, dy = None, None
+            change = app.cellWidth/4
+            if 'right' in keys: #and app.santaRow < app.cols-2:
+                app.santaX += change
+                dx, dy = change, 0
+            elif 'left' in keys: #and app.santaRow > 0:
+                app.santaX -= change
+                dx, dy = -change, 0
+            elif 'down' in keys: #and app.santaCol < app.rows-2:
+                app.santaY += change
+                dx, dy = 0, change
+            elif 'up' in keys: #and app.santaCol > 0:
+                app.santaY -= change
+                dx, dy = 0, -change
+            #print(app.santaRow, app.santaCol)
+            if dx != None and dy != None:
+                if dx < 0:
+                    app.santaFlip = True
+                elif dx > 0:
+                    app.santaFlip = False
+            moveCheck(app, dx, dy)
+            app.santaRow, app.santaCol = getCell(app, app.santaX, app.santaY)
+            app.santaMove += 1
+            
     
-def moveCheck(app, dcol, drow):
-    if app.santaRow > app.rows-1 or app.santaRow < 0:
-        app.santaRow -= drow
-    elif app.santaCol > app.cols-1 or app.santaCol < 0:
-        app.santaCol -= dcol
-    elif app.board[app.santaRow][app.santaCol] == 'house' or app.board[app.santaRow][app.santaCol] in app.obstacleTypes:
-        app.santaRow -= drow
-        app.santaCol -= dcol
-
+def moveCheck(app, dx, dy):
+    xleft, xright = math.ceil(app.santaX - app.cellWidth/2), math.floor(app.santaX + app.cellWidth/2)
+    ytop, ybot = math.ceil(app.santaY - app.cellHeight/2), math.floor(app.santaY + app.cellHeight/2)
+    if ybot > app.boardHeight or ytop < 0:
+        app.santaY -= dy
+    elif xright > app.boardWidth or xleft < 0:
+        app.santaX -= dx
+    else:
+        app.santaRow, app.santaCol = getCell(app, app.santaX, app.santaY)
+        if app.board[app.santaRow][app.santaCol] == 'house' or app.board[app.santaRow][app.santaCol] in app.obstacleTypes:
+            if dx == 0:
+                app.santaY -= dy
+            elif dy == 0:
+                app.santaX -= dx
 
 def isLegalMove(app, row, col):
     if row > app.rows-1 or row < 0:
@@ -436,12 +473,13 @@ def drawGameComplete(app):
     color2 = 'green' if app.timer % 2 == 0 else 'red'
     drawLabel('Great Work, Santa!', app.width/2, app.height/2, size=50, fill=color1, bold=True, align='center')
     drawLabel(f'Gifts Delivered: {app.totalGifts}', app.width/2, app.height/2 + 50, fill=color2, size=20, align='center')
-    drawLabel(f'Time Elapsed: {300-app.gameTimer} seconds', app.width/2, app.height/2 + 75, fill=color1, size=20, align='center')
+    drawLabel(f'Time Elapsed: {math.floor(300-app.gameTimer)} seconds', app.width/2, app.height/2 + 75, fill=color1, size=20, align='center')
 
     drawLabel("Press 'space' to play again", app.width/2, app.height/2 + 150, fill='black', size=20, align='center')
 
 ## Main Page
 def redrawDefault(app):
+    #drawBoard(app)
     drawHouses(app)
     drawObstacles(app)
     drawSanta(app)
@@ -449,6 +487,33 @@ def redrawDefault(app):
     drawGiftRequests(app)
     drawExtraDefault(app)
     drawAnimations(app)
+
+###
+# def drawBoard(app):
+#     for row in range(app.rows):
+#         for col in range(app.cols):
+#             drawCell(app, row, col)
+
+# def drawBoardBorder(app):
+#   # draw the board outline (with double-thickness):
+#   drawRect(app.boardLeft, app.boardTop, app.boardWidth, app.boardHeight,
+#            fill=None, border='black',
+#            borderWidth=2*1)
+
+# def drawCell(app, row, col):
+#     cellLeft, cellTop = getCellLeftTop(app, row, col)
+#     cellWidth, cellHeight = getCellSize(app)
+#     drawRect(cellLeft, cellTop, cellWidth, cellHeight,
+#              fill=None, border='black',
+#              borderWidth=1)
+
+# def getCellLeftTop(app, row, col):
+#     cellWidth, cellHeight = getCellSize(app)
+#     cellLeft = app.boardLeft + col * cellWidth
+#     cellTop = app.boardTop + row * cellHeight
+#     return (cellLeft, cellTop)
+###
+
 
 def generateHouses(app):
     for i in range(app.numHouses):
@@ -516,12 +581,20 @@ def drawObstacles(app):
         #     drawRect(obsX, obsY, app.cellWidth, app.cellHeight, fill='green')
 
 def drawSanta(app):
-    cx, cy = app.santaCol*app.cellWidth, app.santaRow*app.cellHeight
+    cx, cy = app.santaX, app.santaY
+
+    santaImage = app.santaImages[app.santaMove%len(app.santaImages)]
+
+    if app.santaFlip:
+        santaImage = app.santaImagesFlipped[app.santaMove%len(app.santaImages)]
+    
+    santaImage = CMUImage(santaImage)
+
     if (math.floor(app.timer)) % 2 == 0:
-        drawImage(app.santaImage1, cx, cy, width=app.santaImageWidth, height=app.santaImageHeight, rotateAngle=-15)
+        drawImage(santaImage, cx, cy, width=app.santaImageWidth, height=app.santaImageHeight, rotateAngle=-15, align='center')
     else:
-        drawImage(app.santaImage1, cx, cy, width=app.santaImageWidth, height=app.santaImageHeight, rotateAngle=15)
-    #drawCircle(cx + cellWidth/2, cy + cellHeight/2, 10, fill='blue')
+        drawImage(santaImage, cx, cy, width=app.santaImageWidth, height=app.santaImageHeight, rotateAngle=15, align='center')
+    #drawCircle(cx, cy, 10, fill='blue', align='center')
 
 def setUpInventory(app):
     for i in range(len(app.inventoryList)):
@@ -584,17 +657,17 @@ def setUpMaterials(app):
         app.materialsBar.append(Material(i, x, y, app.materialsList[i]))
 
 def setUpTools(app):
-    #x, y, hitbox radius, type, width, height
-    oven = Tool(app.boardWidth-175, app.boardHeight-250, 60, 'oven', 300, 300)
+    #x, y, hitbox radius, type, width, height, angle
+    oven = Tool(app.boardWidth-175, app.boardHeight/2-100, 60, 'oven', 300, 300, 0)
     app.tools['oven'] = oven
 
-    hammer = Tool(50, 50, 30, 'hammer', 80, 80)
+    hammer = Tool(50, 70, 30, 'hammer', 80, 80, -15)
     app.tools['hammer'] = hammer
 
-    glue = Tool(50, app.boardHeight-100, 30, 'glue', 65, 65)
+    glue = Tool(50, 215, 30, 'glue', 65, 65, 15)
     app.tools['glue'] = glue
 
-    knit = Tool(app.boardWidth-100, 70, 30, 'knit', 80, 60)
+    knit = Tool(125, 150, 30, 'knit', 80, 60, 30)
     app.tools['knit'] = knit
 
 def resetMaterials(app):
@@ -622,9 +695,10 @@ def redrawGifts(app):
 
 def drawBackDrop(app):
     drawRect(0, 0, app.boardWidth, app.boardHeight-100, fill='bisque')
-    drawRect(0, app.boardHeight-150, app.boardWidth, app.boardHeight, fill='tan')
-    drawImage(app.shelfImage, app.boardWidth/2, app.boardHeight/2, width=100, height=100, align='center')
-    drawImage(app.tableImage, app.boardWidth/2, app.boardHeight-100, width=1.3*app.boardWidth, height=200, align='center')
+    drawRect(0, app.boardHeight/2, app.boardWidth, app.boardHeight, fill='tan')
+    drawImage(app.shelfImage, app.boardWidth/2-200, app.boardHeight/2-125, width=200, height=300, align='center')
+    drawImage(app.workbenchImage, app.boardWidth/2, app.boardHeight/2+275, width=1.2*app.boardWidth, height=450, align='center')
+    drawImage(app.tableImage, app.boardWidth/2-25, app.boardHeight+25, width=1.2*app.boardWidth, height=app.boardHeight, align='center')
 
 def drawHints(app):
     drawLabel('Place the right materials, and then use a tool to build a gift!', app.boardWidth/2, 20, size=12, align='center')
@@ -634,7 +708,7 @@ def drawTools(app):
     drawToolHitboxes(app)
     for tool in app.tools:
         image = app.toolImageDict[tool]
-        drawImage(image, app.tools[tool].x, app.tools[tool].y, width=app.tools[tool].width, height=app.tools[tool].height, align='center')
+        drawImage(image, app.tools[tool].x, app.tools[tool].y, width=app.tools[tool].width, height=app.tools[tool].height, rotateAngle=app.tools[tool].angle, align='center')
 
 def drawToolHitboxes(app):
     for tool in app.tools:
@@ -651,8 +725,8 @@ def drawExtraGifts(app):
     drawTimer(app)
     for i in range(len(app.materialsBar)):
         material = app.materialsBar[i]
+        drawOval(material.x, material.y+3*material.hitR/4, 2*material.hitR, material.hitR, fill='black', opacity=30)
         drawImage(app.materialImageDict[material.type], material.x, material.y, width=app.materialImageWidth, height=app.materialImageHeight, align='center')
-        #drawCircle(cx, cy, material.hitR, fill='gray')
         #drawLabel(f'{material.type}', cx, cy)
 
 def drawRecipeBook(app):

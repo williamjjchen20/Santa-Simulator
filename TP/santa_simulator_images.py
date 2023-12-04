@@ -28,9 +28,23 @@ app.sewingImage = openImage('sewing.png') #https://creazilla.com/nodes/820062-se
 app.sewingImage = CMUImage(app.sewingImage)
 
 ### Santa
-app.santaImage1 = openImage('santa1.png') # https://www.istockphoto.com/vector/cartoon-santa-claus-gm493442274-76885439
-app.santaImage1 = CMUImage(app.santaImage1)
+santaImage1 = openImage('santa1.png') # https://tenor.com/view/santa-claus-santa-christmas-edmotions-run-gif-15712656
+#app.santaImage1 = CMUImage(app.santaImage1)
+santaImage2 = openImage('santa2.png') # 
+#app.santaImage2 = CMUImage(app.santaImage2)
+santaImage3 = openImage('santa3.png') # 
+#app.santaImage3 = CMUImage(app.santaImage3)
+santaImage4 = openImage('santa4.png') # 
+#app.santaImage4 = CMUImage(app.santaImage4)
+santaImage5 = openImage('santa5.png') # 
+#app.santaImage5 = CMUImage(app.santaImage5)
 
+app.santaImages = [santaImage1, santaImage2, santaImage3, santaImage4, santaImage5]
+
+app.santaImagesFlipped = []
+for image in app.santaImages:
+        imageFlipped = image.transpose(Image.FLIP_LEFT_RIGHT)
+        app.santaImagesFlipped.append(imageFlipped)
 
 ## Materials
 
@@ -79,8 +93,11 @@ app.houseImage3 = CMUImage(app.houseImage3)
 app.shelfImage = openImage('shelf.png') #https://thehungryjpeg.com/product/3498125-empty-wall-book-shelf-wood-shelves-vector-illustration
 app.shelfImage = CMUImage(app.shelfImage)
 
-app.tableImage = openImage('table.png') #
+app.tableImage = openImage('table.png') #https://www.vecteezy.com/vector-art/1742378-wooden-table-top
 app.tableImage = CMUImage(app.tableImage)
+
+app.workbenchImage = openImage('workbench.png') # https://www.istockphoto.com/vector/wooden-table-on-white-background-gm657723786-119947237
+app.workbenchImage = CMUImage(app.workbenchImage)
 
 ### Trash can
 

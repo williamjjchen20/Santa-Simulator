@@ -50,7 +50,7 @@ class Material:
         return self.type
 
 class Tool:
-    def __init__(self, x, y, hitR, type, width, height):
+    def __init__(self, x, y, hitR, type, width, height, angle):
         self.x = x
         self.y = y
         self.startX = x
@@ -59,6 +59,7 @@ class Tool:
         self.type = type
         self.width = width
         self.height = height
+        self.angle = angle
     
     def __repr__(self):
         return self.type
