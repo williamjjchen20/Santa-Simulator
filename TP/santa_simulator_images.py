@@ -108,6 +108,9 @@ for frame in range(fireImage.n_frames): #Code from piazza gif guide
         app.fireImages.append(fr)
 app.fireImages.pop(0)
 
+app.bookImage = openImage('book.png') # https://www.clipartmax.com/middle/m2i8i8G6H7H7m2H7_clip-art-old-book-open-book-png/
+app.bookImage = CMUImage(app.bookImage)
+
 
 ### Trash can
 
