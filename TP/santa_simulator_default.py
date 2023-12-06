@@ -35,13 +35,12 @@ def resetApp(app, level, totalGifts, resetGame):
     app.boardHeight = app.height - app.bottomHeight
     app.cellWidth, app.cellHeight = getCellSize(app)
 
-    #print(app.rows, app.cols)
-
     ### Santa
     app.santaRow = 0
     app.santaCol = 0
     app.santaX = app.cellWidth/2
     app.santaY = app.cellHeight/2
+    app.santaMoving = False
     app.santaFrame = 0
     app.santaFlip = False
     app.footprints = []
@@ -51,10 +50,10 @@ def resetApp(app, level, totalGifts, resetGame):
     app.showPath = False
     app.pathTime = None
     app.selectedHouse = None
-    app.pathDirection = None
+    app.closestDist = None
 
     ### Setup Board
-    numObstacles = 45+10*app.level
+    numObstacles = 50+10*app.level
     resetBoard(app, app.level, numObstacles)
 
     if resetGame:
@@ -106,7 +105,6 @@ def resetApp(app, level, totalGifts, resetGame):
         setUpTools(app)
 
         ## Game Features
-        app.points = 0
         app.trashX, app.trashY = app.boardWidth+app.inventoryWidth/2, app.boardHeight+app.bottomHeight/2
         app.gameTimer = 300
         app.timer = 0
@@ -159,6 +157,8 @@ def resetBoard(app, numHouses, numObstacles):
             resetBoard(app, numHouses, numObstacles - 5) 
         else:
             resetBoard(app, app.numHouses, numObstacles)
+    print(numObstacles)
+    app.resetCounter, app.totalResets = 0, 0
         
 def onAppStart(app):
     app.resetCounter, app.totalResets = 0, 0
@@ -197,15 +197,17 @@ def onStep(app):
     ###General functions
     app.timer += (1/app.stepsPerSecond)
     if not app.gameOver:
-        if not app.paused:
-            app.gameTimer -= (1/app.stepsPerSecond)
         if app.gameTimer <= 0:
             app.gameOver = True
-    
+        if not app.paused:
+            app.gameTimer -= (1/app.stepsPerSecond)
+
+    ###Showing path
     if app.pathTime != None:
-        if app.timer - app.pathTime > 1:
+        if app.timer - app.pathTime > 2:
             app.showPath = False
             app.selectedHouse = None
+            app.path = None
 
     ### Gift delivery
     if app.giftAnimation:
@@ -231,7 +233,7 @@ def onStep(app):
             snow.radius = random.randint(1, 5)
 
     ### Footprints
-    if len(app.footprints) == 6:
+    if len(app.footprints) == 6 or not app.santaMoving:
         app.footprints = app.footprints[2:]
 
     ### Tool Animation
@@ -259,11 +261,18 @@ def onMousePress(app, mouseX, mouseY):
                     mouseRow, mouseCol = getCell(app, mouseX, mouseY)
                     if distance(mouseRow, mouseCol, house.row, house.col) == 0:
                         moves = []
-                        direction = chooseDirection(app, house.row, house.col)
-                        path = findPath(app, house.row, house.col, moves, direction)
-                        path = list(reversed(path))
-                        app.path, app.showPath, app.pathTime = path, True, app.timer
-                        app.selectedHouse = house
+                        #direction = chooseDirection(app.santaRow, app.santaCol, house.row, house.col)
+                        path = findPath(app, house.row, house.col, app.santaRow, app.santaCol, moves)
+                        
+                        if path == 'crashed':
+                            print(path)
+
+                        app.resetCounter = 0
+                        if path != None and path != 'crashed':
+                            path = correctPath(path)
+                            #path = list(reversed(path))
+                            app.path, app.showPath, app.pathTime = path, True, app.timer
+                            app.selectedHouse = house
                         #print(path)
 
         if app.screen == 'gifts-screen':
@@ -390,25 +399,27 @@ def onKeyHold(app, keys):
             oldX, oldY = app.santaX, app.santaY
             dx, dy = None, None
             changeX, changeY = app.cellWidth/4, app.cellHeight/4
-            if 'right' in keys: #and app.santaRow < app.cols-2:
+            if 'right' in keys: 
                 app.santaX += changeX
                 dx, dy = changeX, 0
-            elif 'left' in keys: #and app.santaRow > 0:
+            elif 'left' in keys: 
                 app.santaX -= changeX
                 dx, dy = -changeX, 0
-            elif 'down' in keys: #and app.santaCol < app.rows-2:
+            elif 'down' in keys: 
                 app.santaY += changeY
                 dx, dy = 0, changeY
-            elif 'up' in keys: #and app.santaCol > 0:
+            elif 'up' in keys:
                 app.santaY -= changeY
                 dx, dy = 0, -changeY
-            #print(app.santaRow, app.santaCol)
+
             if dx != None and dy != None:
+                app.santaFrame += 1
                 if dx < 0:
                     app.santaFlip = True
                 elif dx > 0:
                     app.santaFlip = False
             moveCheck(app, dx, dy)
+
             ### Set up footprints
             if app.santaX != oldX or app.santaY != oldY:
                 if abs(dx) > 0:
@@ -419,9 +430,12 @@ def onKeyHold(app, keys):
                     app.footprints.append((oldX, oldY, 'vertical'))
             
             app.santaRow, app.santaCol = getCell(app, app.santaX, app.santaY)
-            app.santaFrame += 1
+            app.santaMoving = True
             
-    
+def onKeyRelease(app, key):
+    if key == 'right' or key == 'left' or key == 'up' or key == 'down':
+        app.santaMoving = False
+
 def moveCheck(app, dx, dy):
     xleft, xright = math.ceil(app.santaX - app.cellWidth/2), math.floor(app.santaX + app.cellWidth/2)
     ytop, ybot = math.ceil(app.santaY - app.cellHeight/2), math.floor(app.santaY + app.cellHeight/2)
@@ -478,26 +492,35 @@ def redrawAll(app):
 
 def drawPaused(app):
     drawRect(0, 0, app.width, app.height, fill='black', opacity=90)
+    drawRect(app.width/2-15, app.height/2-75, 20, 50, fill='white', align='center')
+    drawRect(app.width/2+15, app.height/2-75, 20, 50, fill='white', align='center')
     drawLabel('Game Paused', app.width/2, app.height/2, fill='white', size=50, bold=True, align='center')
     drawLabel("Press 'space' to resume", app.width/2, app.height/2+50, fill='white', size=20, align='center')
     drawLabel("Press 'r' to restart", app.width/2, app.height/2+75, fill='white', size=20, align='center')
 
 def drawStartScreen(app):
     drawRect(0, 0, app.width, app.height, fill='white')
-    titleColor = 'red' if app.timer % 2 == 0 else 'green'
-    labelColor = 'green' if app.timer % 2 == 0 else 'red'
-    drawLabel('Santa Simulator', app.width/2, app.height/2, fill=titleColor, size=50, bold=True, align='center')
-    drawLabel('Press space to start game!', app.width/2, app.height/2+50, fill=labelColor, italic=True, size=25, align='center')
+    titleColor = 'red' if math.floor(app.timer) % 2 == 0 else 'green'
+    labelColor = 'green' if math.floor(app.timer) % 2 == 0 else 'red'
+    drawLabel('Santa Simulator', app.width/2, app.height/4, fill=titleColor, size=50, bold=True, align='center')
+    drawLabel('Press space to start game!', app.width/2, app.height/4+50, fill=labelColor, italic=True, size=25, align='center')
+
+    drawLabel('As Santa, your job is to deliver gifts to everyone this Christmas.', app.width/2, app.height/2, size=15)
+    drawLabel('Sadly, your sleigh broke down, so you must reach each house on foot.', app.width/2, app.height/2 + 20, size=15)
+    drawLabel('Make sure to craft the right gift in the workshop!', app.width/2, app.height/2 + 40, size=15)
 
     drawLights(app)
 
 def drawLights(app):
-    colors = ['green', 'red', 'pink', 'yellow', 'orange']
+    colors = ['lightgreen', 'red', 'pink', 'yellow', 'orange']
     lightSpacing = app.width/10
     for cx in range(10):
         drawOval(cx*lightSpacing+lightSpacing/2, 0, lightSpacing, 50, fill=None, border='black')
         randColor = random.randint(0, len(colors)-1)
         drawCircle(cx*lightSpacing+lightSpacing/2, 25, 10, fill=colors[randColor], border=None)
+        drawCircle(cx*lightSpacing+lightSpacing/2+4, 20, 3, fill='white', border=None)
+        drawCircle(cx*lightSpacing+lightSpacing/2+5, 26, 1.2, fill='white', border=None)
+
 
 def drawGameOver(app):
     drawRect(0, 0, app.width, app.height, fill='black', opacity=90)
@@ -505,19 +528,20 @@ def drawGameOver(app):
     color2 = 'green' if app.timer % 2 == 0 else 'red'
     drawLabel('Times Up!', app.width/2, app.height/2, size=50, fill=color1, bold=True, align='center')
     drawLabel(f'Gifts Delivered: {app.totalGifts}', app.width/2, app.height/2 + 50, fill=color2, size=20, align='center')
-    drawLabel(f'Points: {app.points}', app.width/2, app.height/2 + 75, fill=color1, size=20, align='center')
 
     drawLabel("Press 'space' to restart", app.width/2, app.height/2 + 150, fill='white', size=20, align='center')
 
 def drawGameComplete(app):
     drawRect(0, 0, app.width, app.height, fill='white')
-    color1 = 'red' if app.timer % 2 == 0 else 'green'
-    color2 = 'green' if app.timer % 2 == 0 else 'red'
+    color1 = 'red' if math.floor(app.timer) % 2 == 0 else 'green'
+    color2 = 'green' if math.floor(app.timer) % 2 == 0 else 'red'
     drawLabel('Great Work, Santa!', app.width/2, app.height/2, size=50, fill=color1, bold=True, align='center')
-    drawLabel(f'Gifts Delivered: {app.totalGifts}', app.width/2, app.height/2 + 50, fill=color2, size=20, align='center')
-    drawLabel(f'Time Elapsed: {math.floor(300-app.gameTimer)} seconds', app.width/2, app.height/2 + 75, fill=color1, size=20, align='center')
+    drawLabel(f'Gifts Delivered: {app.totalGifts}', app.width/2, app.height/2 + 50, fill='black', size=20, align='center')
+    drawLabel(f'Time Elapsed: {math.floor(300-app.gameTimer)} seconds', app.width/2, app.height/2 + 75, fill='black', size=20, align='center')
 
-    drawLabel("Press 'space' to play again", app.width/2, app.height/2 + 150, fill='black', size=20, align='center')
+    drawLabel("Press 'space' or 'r' to play again", app.width/2, app.height/2 + 150, fill=color2, size=20, align='center')
+
+    drawLights(app)
 
 ## Main Page
 def redrawDefault(app):
@@ -592,7 +616,7 @@ def generateObstacle(app, i):
 def isClogged(app, row, col):
     for house in app.houses:
         dist = ((row-house.row)**2 + (col-house.col)**2)**0.5
-        if dist <= 5:
+        if dist <= 3:
             return True 
     return False
 
@@ -628,8 +652,15 @@ def drawSanta(app):
 
     santaImage = app.santaImages[app.santaFrame%len(app.santaImages)]
 
+
     if app.santaFlip:
         santaImage = app.santaImagesFlipped[app.santaFrame%len(app.santaImages)]
+
+    if not app.santaMoving:
+        if not app.santaFlip:
+            santaImage = app.santaImages[2]
+        else:
+            santaImage = app.santaImagesFlipped[2]
     
     santaImage = CMUImage(santaImage)
 
@@ -660,7 +691,7 @@ def resetInventory(app):
         gift.x, gift.y = app.inventoryLeft + app.inventoryWidth/2, 75+75*i
 
 def drawInventory(app):
-    drawRect(app.boardWidth, 0, app.inventoryWidth, app.height, fill='blanchedalmond')
+    drawRect(app.boardWidth, 0, app.inventoryWidth, app.height, fill= 'white' if app.screen=='default-screen' else'blanchedalmond')
     drawLine(app.boardWidth, 0, app.boardWidth, app.height)
     drawLabel('Gifts', app.boardWidth+app.inventoryWidth/2, 20, align='center', size=20)
 
@@ -693,8 +724,8 @@ def drawExtraDefault(app):
     drawLine(0, app.boardHeight, app.boardWidth, app.boardHeight)
 
     ### draw path
-    if app.path != None:
-        showPath(app, app.showPath)
+    if app.showPath:
+        showPath(app)
 
 def drawTimer(app):
     drawLabel(f'Time: {math.floor(app.gameTimer)} s', 5*app.boardWidth/6, app.boardHeight + app.bottomHeight/2, size=20)
@@ -786,6 +817,10 @@ def drawTools(app):
         else:
             drawOval(cx, cy, rx, ry, fill='black', opacity=40)
             drawImage(image, tool.x, tool.y, width=tool.width, height=tool.height, rotateAngle=tool.angle, align='center')
+        
+        if app.toolAnimation != None:
+            tool = app.tools[app.toolAnimation]
+            drawLabel("Crafting...", tool.x, tool.y-50, align='center', fill='white', italic=True, size=20)
 
 def drawTool(app, tool):
     image = app.toolImageDict[tool.type]
@@ -815,7 +850,7 @@ def drawRecipeBook(app):
     drawRect(0, 0, app.width, app.height, fill='black', opacity=80)
     #drawRect(app.width/2, app.height/2, app.recipeWidth, app.recipeHeight, fill='white', align='center')
     drawImage(app.bookImage, app.width/2, app.height/2, width=app.recipeWidth, height=app.recipeHeight, align='center')
-    drawLabel('Recipes', app.width/2, app.height/5, size=30, align='center', fill='white')
+    drawLabel('Recipes', app.width/2, app.height/5, size=30, align='center', bold=True, fill='white')
     
     i = 1
     for recipe in app.recipes:
@@ -901,99 +936,74 @@ def addGift(app, gift):
         app.inventoryList.append(gift)
         setUpInventory(app)
 
-
 ### Extra Features
     
-def showPath(app, showPath):
-    pathColor = 'black' if showPath else None
-    path = app.path[1: -1]
-    for row, col in path:
-        #if closestDistance == None or dist < closestDistance:
+def showPath(app):
+    pathColor = 'black'
+    path = app.path[1:]
+    for i in range(len(path)):
+        row, col = path[i]
         drawCircle(col*app.cellWidth+app.cellWidth/2, row*app.cellHeight+app.cellHeight/2, 10, fill=pathColor, opacity=10)
-
-# def findPath(app, row, col, moves):
-#     bestDirection = None
-#     if row >= app.santaRow and col > app.santaCol:
-#         bestDirection = [(1, 0), (0, 1), (-1, 0), (0, -1)]
-#     elif row > app.santaRow and col <= app.santaCol:
-#         bestDirection = [(1, 0), (0, -1), (-1, 0), (0, 1)]
-#     elif row < app.santaRow and col > app.santaCol:
-#         bestDirection = [(-1, 0), (0, 1), (1, 0), (0, -1)]
-#     elif row < app.santaRow and col < app.santaCol:
-#         bestDirection = [(-1, 0), (0, -1), (1, 0), (0, 1)]
-#     return findOptimalPath(app, row, col, moves, bestDirection)
     
-def findPath(app, row, col, moves, direction):
-    if (row, col) == (app.santaRow, app.santaCol):
-        moves.append((row, col))
+def findPath(app, houseRow, houseCol, santaRow, santaCol, moves):
+    app.resetCounter += 1
+    print(app.resetCounter)
+    if app.resetCounter > 2000:
+        return 'crashed'
+    if distance(santaRow, santaCol, houseRow, houseCol) == 1:
+        moves.append((santaRow, santaCol))
         return moves
     else:
-        moves.append((row, col))
-        if distance(row, col, app.santaRow, app.santaCol) < 5:
-            direction = chooseDirection(app, row, col)
+        moves.append((santaRow, santaCol))
+        #if santaCol == houseCol or santaRow == houseRow and distance(santaRow, santaCol, houseRow, houseCol) < 5:
+        direction = chooseDirection(santaRow, santaCol, houseRow, houseCol)
         for (drow, dcol) in direction:
-            if isLegalMove(app, row+drow, col+dcol) and (row+drow, col+dcol) not in moves:
-                row += drow
-                col += dcol
-                solution = findPath(app, row, col, moves, direction)
+            if isLegalMove(app, santaRow+drow, santaCol+dcol) and (santaRow+drow, santaCol+dcol) not in moves:
+                santaRow += drow
+                santaCol += dcol
+                solution = findPath(app, houseRow, houseCol, santaRow, santaCol, moves)
                 if solution != None:
                     return solution
+                elif solution == 'crashed':
+                    return 'crashed'
                 moves.pop()
-                row -= drow
-                col -= dcol
+                santaRow -= drow
+                santaCol -= dcol
         return None
 
-def chooseDirection(app, row, col):
-    bestDirection = []
-    diffCol, diffRow = col-app.santaCol, row-app.santaRow
+def chooseDirection(row, col, row2, col2):
+    bestDirection = None
+    diffCol, diffRow = col2-col, row2-row
     
     normDiffCol = int(diffCol/abs(diffCol)) if diffCol != 0 else 0
     normDiffRow = int(diffRow/abs(diffRow)) if diffRow != 0 else 0
-    if abs(diffRow) > abs(diffCol):
-        bestDirection.append((normDiffRow, 0))
-        bestDirection.append((0, normDiffCol))
-        bestDirection.append((-normDiffRow, 0))
-        bestDirection.append((0, -normDiffCol))
-    else:
-        bestDirection.append((0, normDiffCol))
-        bestDirection.append((normDiffRow, 0))
-        bestDirection.append((0, -normDiffCol))
-        bestDirection.append((-normDiffRow, 0))
-    print(bestDirection)
+    if diffCol == 0:
+        bestDirection = [(normDiffRow, 0), (0, normDiffRow), (-normDiffRow, 0), (0, -normDiffRow)]
+    elif diffRow == 0:
+        bestDirection = [(0, normDiffCol), (normDiffCol, 0), (0, -normDiffCol), (-normDiffCol, 0)]
+    elif abs(diffRow) > abs(diffCol):
+        bestDirection =  [(normDiffRow, 0), (0, normDiffCol), (-normDiffRow, 0), (0, -normDiffCol)]
+    elif abs(diffCol) >= abs(diffRow):
+        bestDirection = [(0, normDiffCol), (normDiffRow, 0), (0, -normDiffCol), (-normDiffRow, 0)]
 
-
-
-    # if diffRow > 0 and diffCol > 0:
-    #     if diffRow >= diffCol:
-    #         bestDirection = [(-1, 0), (0, -1), (1, 0), (0, 1)]
-    #     else:
-    #         bestDirection = [(0, -1), (-1, 0), (0, 1), (1, 0)]
-    # elif diffRow > 0 and diffCol < 0:
-    #     if abs(diffRow) >= abs(diffCol):
-    #         bestDirection = [(-1, 0), (0, 1), (1, 0), (0, -1)]
-    #     else:
-    #         bestDirection = [(0, 1), (-1, 0), (0, -1), (1, 0)]
-    # elif diffRow < 0 and diffCol > 0:
-    #     if abs(diffRow) >= abs(diffCol):
-    #         bestDirection = [(1, 0), (0, -1), (-1, 0), (0, 1)]
-    #     else:
-    #         bestDirection = [(0, -1), (1, 0), (0, 1), (-1, 0)]
-    # elif diffRow < 0 and diffCol < 0:
-    #     if abs(diffRow) >= abs(diffCol):
-    #         bestDirection = [(1, 0), (0, 1), (-1, 0), (0, -1)]
-    #     else:
-    #         bestDirection = [(0, 1), (1, 0), (0, -1), (-1, 0)]
-    # elif diffRow == 0 and diffCol > 0:
-    #     bestDirection = [(0, -1), (1, 0), (0, 1), (-1, 0)]
-    # elif diffRow == 0 and diffCol < 0:
-    #     bestDirection = [(0, 1), (1, 0), (0, 1), (-1, 0)]
-    # elif diffRow < 0 and diffCol == 0:
-    #     bestDirection = [(1, 0), (0, 1), (-1, 0), (0, -1)]
-    # elif diffRow > 0 and diffCol == 0:
-    #     bestDirection = [(-1, 0), (0, 1), (1, 0), (0, -1)]
     return bestDirection
 
-#Avalanche 
+def correctPath(path):
+    i = 0
+    while i < len(path):
+        if i > 100:
+            return
+        (row, col) = path[i]
+        largestIndex = None
+        for drow, dcol in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            if (row+drow, col+dcol) in path:
+                i2 = path.index((row+drow, col+dcol))
+                if i2 >= i and (largestIndex == None or i2 > largestIndex):
+                    largestIndex = i2
+        if largestIndex != None:
+            path = path[0: i+1] + path[largestIndex:]
+        i+=1
+    return path
 
 ### Animations
 def drawAnimations(app):
